@@ -11,4 +11,11 @@ def test_model_construction_is_skipped_without_tensorflow():
     # Avoid ImageNet weight downloads even in environments that have TensorFlow.
     model = create_model(weights=None)
     assert model.input_shape == (None, 224, 224, 3)
-    assert set(model.output_names) == {"classification", "coverage"}
+    assert set(model.output_names) == {"classification", "severity_percentage_points"}
+    assert model.get_layer("severity_fraction").activation.__name__ == "sigmoid"
+
+    import tensorflow as tf
+
+    output = model(tf.zeros((1, 224, 224, 3)), training=False)
+    severity = output["severity"].numpy()
+    assert ((severity >= 0) & (severity <= 100)).all()

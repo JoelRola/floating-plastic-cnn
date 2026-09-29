@@ -8,7 +8,9 @@ Author: **Joel Rola**
 
 ## Project
 
-The documented model concept uses an ImageNet-pretrained ResNet50 backbone with a binary plastic-presence head and an image-area coverage regression head. Inputs are resized to 224 × 224. The refactored package provides reusable model, data, balancing, and metric interfaces; training and prediction workflows are being made reproducible before results are reported.
+The cleaned pipeline uses an ImageNet-pretrained ResNet50 backbone with binary plastic-presence and image-area coverage heads. Inputs are resized to 224 x 224. Training, test-only evaluation, and single-image prediction are available through the scripts below. No new portfolio experiment has been run yet.
+
+The historical appendix scales RGB pixels by `/255`. The portfolio model instead embeds the official `keras.applications.resnet.preprocess_input` transform in the saved model graph. Severity is constrained to 0-100 percentage points using a sigmoid output scaled by 100. These choices differ from the historical implementation; the cleaned pipeline is not claimed to reproduce dissertation methodology or metrics.
 
 ## Dissertation results
 
@@ -24,33 +26,46 @@ The following are historical results reported in the dissertation materials. The
 | Severity MAE | 5.3 percentage points |
 | Mean classification confidence | 93% |
 
-The 0% baseline specificity is notable because the overall accuracy alone hid a majority-class failure mode: the baseline did not correctly identify negative examples. Specificity and sensitivity were not both derived solely from the positive-only UGV set. The portfolio reproduction work is intended to make the evaluation protocol clearer. See [results](docs/results.md) and [reproducibility notes](docs/reproducibility.md) for context.
+The 0% baseline specificity is notable because overall accuracy alone hid a majority-class failure mode: the baseline did not correctly identify negative examples. Specificity and sensitivity were not both derived solely from the positive-only UGV set. Portfolio reproduction work is intended to make the evaluation protocol clearer. See [results](docs/results.md) and [reproducibility notes](docs/reproducibility.md).
 
 ## Data and setup
 
-Datasets are not included. See [`data/README.md`](data/README.md) for the original source citations, licence information, expected layout, and current schema limitations.
+Datasets are not included. See [`data/README.md`](data/README.md) for source citations, licence information, expected layout, and schema limitations.
 
-Inspect local metadata without decoding image pixels or training:
+Inspect local metadata without training:
 
 ```bash
 python scripts/inspect_data.py --dataset flopwd --path data/FloPWD
 python scripts/inspect_data.py --dataset ugv --path data/UGV_NBWASTE
 ```
 
-For FloPWD, add `--write-split-manifest` to save a deterministic, stratified 70/15/15 filename manifest under `experiments/splits/`. The checked-in seed-42 manifest is a portfolio split, not the dissertation split.
+For FloPWD, `--write-split-manifest` saves a deterministic stratified 70/15/15 filename manifest. The seed-42 manifest is a portfolio split, not the dissertation split.
 
-For model work, create a Python environment and install the packages in `requirements.txt`. TensorFlow installation depends on the target operating system and accelerator; choose a compatible TensorFlow build for your environment. For lightweight local tests, install `requirements-dev.txt` instead. The tests do not instantiate ResNet50 or download pretrained weights.
+The runtime targets Python 3.10 with TensorFlow 2.15.x and NumPy below 2.0. Install `requirements.txt` for training/inference. Lightweight tests use `requirements-dev.txt`; standard CI does not install TensorFlow or download ImageNet weights. Python 3.10.11 is the lightweight development version used for scaffold validation. TensorFlow runtime and model execution remain unverified locally because TensorFlow was not installed.
 
-The clean training/evaluation/prediction command-line workflows are not yet ready to claim a reproduced experiment. Do not interpret historical values above as outputs of this code.
+Train with local FloPWD data and the committed seed-42 manifest:
+
+```powershell
+python scripts/train.py --data-dir "PATH_TO_FLOPWD" --config configs/default.yaml --split-manifest experiments/splits/flopwd_seed42.json --output-dir runs/flopwd_baseline
+```
+
+Evaluate the untouched test split and predict one image:
+
+```powershell
+python scripts/evaluate.py --data-dir "PATH_TO_FLOPWD" --model runs/flopwd_baseline/model.keras --split-manifest experiments/splits/flopwd_seed42.json --output-dir runs/flopwd_baseline/evaluation
+python scripts/predict.py --model runs/flopwd_baseline/model.keras --image path/to/image.jpg
+```
+
+`--max-train-samples` is debug-only. A limited run is marked as a subset, not a full benchmark. Historical values above are not outputs of this code.
 
 ## Repository map
 
-- `src/floating_plastic/` — small reusable implementation modules.
-- `scripts/` — command-line entry points.
-- `configs/default.yaml` — documented experiment defaults.
-- `legacy/` — appendix implementation retained for provenance.
-- `docs/` — methodology, results, model card, and reproducibility notes.
-- `tests/` — lightweight unit tests.
+- `src/floating_plastic/` - reusable model, data, pipeline, split, and metric modules.
+- `scripts/` - training, evaluation, prediction, and data-inspection commands.
+- `configs/default.yaml` - experiment defaults.
+- `legacy/` - appendix implementation retained for provenance.
+- `docs/` - methodology, results, model card, and reproducibility notes.
+- `tests/` - lightweight dataset-independent unit tests.
 
 ## License
 

@@ -14,6 +14,16 @@ Known issues and uncertainties in the appendix version:
 - **Balancing comparison:** the appendix trains baseline and balanced variants for different epoch counts (10 and 15), so the comparison changes more than class ratio.
 - **Metrics:** the comparison plot labels accuracy as balanced accuracy. They happen to agree on an exactly balanced evaluation set, but are different metrics in general.
 
+## Portfolio pipeline runtime and execution
+
+The cleaned runtime targets Python 3.10 with TensorFlow 2.15.x and NumPy below 2.0. The lightweight development environment used Python 3.10.11; TensorFlow is not installed there, so TensorFlow model construction and actual image execution have not been runtime-verified in that environment. Standard CI intentionally does not install TensorFlow or request ImageNet weights. Install compatible runtime requirements before an experiment.
+
+The portfolio pipeline resizes RGB images to 224 x 224 and embeds `keras.applications.resnet.preprocess_input` in the model. The historical appendix scales RGB values by `/255`; do not compare runs as if preprocessing were identical. The severity head is sigmoid-scaled to 0-100 percentage points. Targets are not rescaled, and eight positive/zero-severity labels are kept as supplied.
+
+The committed filename manifest is used exactly; loading validates that manifest filenames correspond to local FloPWD records. Only training data is shuffled. Random seeds are set through Keras and the tf.data shuffle; deterministic TensorFlow ops are requested by default. Exact bit-for-bit repeatability can still depend on TensorFlow version, hardware, and backend implementation. A debug `--max-train-samples` run is marked as a subset and is not a full benchmark.
+
+Evaluation is test-only and reports classification metrics plus severity errors for all test images and positive test images. The positive-only severity MAE is conditional on the binary label and has its own sample count; it does not replace the all-image regression result. Neither evaluation nor prediction uses UGV in this phase.
+
 ## Portfolio data audit
 
 The locally available FloPWD copy contains 2,002 image files, 2,002 binary CSV rows, 2,002 severity CSV rows, and 2,002 masks. Filenames match across all four sources and are unique. Binary counts are 1,482 yes and 520 no. The severity column is in percentage points from 0.00 to 81.91 and the source describes it as mask-derived. Eight yes-labelled images have a zero severity value; neither target is silently changed. The deterministic loader validates exact required CSV columns, filenames, duplicate rows, image/mask correspondence, and severity bounds.

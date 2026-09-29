@@ -1,4 +1,4 @@
-"""Dependency-light classification and coverage metrics."""
+"""Dependency-light classification and severity regression metrics."""
 
 import math
 
@@ -12,33 +12,49 @@ def _binary_inputs(y_true, y_pred):
     return [int(v) for v in true], [int(v) for v in pred]
 
 
-def accuracy(y_true, y_pred):
+def threshold_predictions(probabilities, threshold=0.5):
+    """Convert finite probabilities into binary predictions at ``threshold``."""
+    if not math.isfinite(float(threshold)) or not 0 <= threshold <= 1:
+        raise ValueError("threshold must be in [0, 1]")
+    values = [float(value) for value in probabilities]
+    if any(not math.isfinite(value) or not 0 <= value <= 1 for value in values):
+        raise ValueError("probabilities must be finite values in [0, 1]")
+    return [int(value >= threshold) for value in values]
+
+
+def confusion_counts(y_true, y_pred):
     true, pred = _binary_inputs(y_true, y_pred)
-    return sum(a == b for a, b in zip(true, pred)) / len(true)
+    tn = sum(a == 0 and b == 0 for a, b in zip(true, pred))
+    fp = sum(a == 0 and b == 1 for a, b in zip(true, pred))
+    fn = sum(a == 1 and b == 0 for a, b in zip(true, pred))
+    tp = sum(a == 1 and b == 1 for a, b in zip(true, pred))
+    return {"tn": tn, "fp": fp, "fn": fn, "tp": tp}
 
 
-def sensitivity(y_true, y_pred):
-    true, pred = _binary_inputs(y_true, y_pred)
-    positives = sum(v == 1 for v in true)
-    if positives == 0:
-        raise ValueError("sensitivity is undefined when y_true has no positive samples")
-    return sum(a == b == 1 for a, b in zip(true, pred)) / positives
+def classification_metrics(y_true, y_pred):
+    """Return accuracy, recall, specificity, balanced accuracy, precision, F1 and TN/FP/FN/TP."""
+    counts = confusion_counts(y_true, y_pred)
+    tn, fp, fn, tp = (counts[key] for key in ("tn", "fp", "fn", "tp"))
+    n = tn + fp + fn + tp
+    if tp + fn == 0 or tn + fp == 0:
+        raise ValueError("sensitivity and specificity require both classes in y_true")
+    sensitivity = tp / (tp + fn)
+    specificity = tn / (tn + fp)
+    precision = tp / (tp + fp) if tp + fp else 0.0
+    f1 = 2 * precision * sensitivity / (precision + sensitivity) if precision + sensitivity else 0.0
+    return {
+        "sample_count": n,
+        "accuracy": (tp + tn) / n,
+        "sensitivity": sensitivity,
+        "specificity": specificity,
+        "balanced_accuracy": (sensitivity + specificity) / 2,
+        "precision": precision,
+        "f1": f1,
+        "confusion_matrix": counts,
+    }
 
 
-def specificity(y_true, y_pred):
-    true, pred = _binary_inputs(y_true, y_pred)
-    negatives = sum(v == 0 for v in true)
-    if negatives == 0:
-        raise ValueError("specificity is undefined when y_true has no negative samples")
-    return sum(a == b == 0 for a, b in zip(true, pred)) / negatives
-
-
-def balanced_accuracy(y_true, y_pred):
-    return (sensitivity(y_true, y_pred) + specificity(y_true, y_pred)) / 2
-
-
-def severity_mae(y_true_percentage_points, y_pred_percentage_points):
-    """Mean absolute error where coverage labels/predictions are 0–100 values."""
+def _coverage_pairs(y_true_percentage_points, y_pred_percentage_points):
     true = list(y_true_percentage_points)
     pred = list(y_pred_percentage_points)
     if not true or len(true) != len(pred):
@@ -47,6 +63,51 @@ def severity_mae(y_true_percentage_points, y_pred_percentage_points):
         pairs = [(float(a), float(b)) for a, b in zip(true, pred)]
     except (TypeError, ValueError) as exc:
         raise ValueError("coverage values must be finite numbers") from exc
-    if any(not math.isfinite(a) or not math.isfinite(b) for a, b in pairs):
-        raise ValueError("coverage values must be finite numbers")
-    return sum(abs(a - b) for a, b in pairs) / len(pairs)
+    if any(
+        not math.isfinite(a) or not math.isfinite(b) or not 0 <= a <= 100 or not 0 <= b <= 100
+        for a, b in pairs
+    ):
+        raise ValueError("coverage values must be finite and in percentage points [0, 100]")
+    return pairs
+
+
+def severity_regression_metrics(y_true_percentage_points, y_pred_percentage_points):
+    """Calculate sample count, MAE, and RMSE in 0–100 percentage points."""
+    pairs = _coverage_pairs(y_true_percentage_points, y_pred_percentage_points)
+    errors = [pred - true for true, pred in pairs]
+    return {
+        "sample_count": len(pairs),
+        "mae_percentage_points": sum(abs(error) for error in errors) / len(errors),
+        "rmse_percentage_points": math.sqrt(sum(error * error for error in errors) / len(errors)),
+    }
+
+
+def accuracy(y_true, y_pred):
+    counts = confusion_counts(y_true, y_pred)
+    return (counts["tn"] + counts["tp"]) / sum(counts.values())
+
+
+def sensitivity(y_true, y_pred):
+    counts = confusion_counts(y_true, y_pred)
+    denominator = counts["tp"] + counts["fn"]
+    if not denominator:
+        raise ValueError("sensitivity requires at least one positive true label")
+    return counts["tp"] / denominator
+
+
+def specificity(y_true, y_pred):
+    counts = confusion_counts(y_true, y_pred)
+    denominator = counts["tn"] + counts["fp"]
+    if not denominator:
+        raise ValueError("specificity requires at least one negative true label")
+    return counts["tn"] / denominator
+
+
+def balanced_accuracy(y_true, y_pred):
+    return classification_metrics(y_true, y_pred)["balanced_accuracy"]
+
+
+def severity_mae(y_true_percentage_points, y_pred_percentage_points):
+    return severity_regression_metrics(y_true_percentage_points, y_pred_percentage_points)[
+        "mae_percentage_points"
+    ]

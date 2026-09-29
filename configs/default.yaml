@@ -1,13 +1,26 @@
-seed: 42
-image_size: [224, 224]
-batch_size: 32
-epochs: 10
-image_limit: null  # null means all verified label rows
-negative_to_positive_ratio: 1
-paths:
-  flopwd: data/FloPWD
-  ugv: data/UGV_NWBWASTE
-  output_dir: outputs
+data:
+  image_size: [224, 224]
+  split_manifest: experiments/splits/flopwd_seed42.json
+  severity_units: percentage_points_0_to_100
+model:
+  backbone: ResNet50
+  weights: imagenet
+  backbone_trainable: false
+  dense_units: [256, 128]
+  dropout_rates: [0.3, 0.2]
+training:
+  seed: 42
+  epochs: 10
+  batch_size: 32
+  learning_rate: 0.001
+  shuffle_training: true
+  max_train_samples: null
+losses:
+  classification: binary_crossentropy
+  severity: mae
+  classification_weight: 1.0
+  severity_weight: 0.5
 evaluation:
   classification_threshold: 0.5
-  # Evaluate separately by dataset/source; never combine source and class labels.
+reproducibility:
+  deterministic_tensorflow_ops: true

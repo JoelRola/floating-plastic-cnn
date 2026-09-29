@@ -93,6 +93,24 @@ def load_split_manifest(path, expected_filenames=None):
     return manifest
 
 
+def records_for_split(records, manifest, split):
+    """Resolve a manifest partition to filename-sorted dataset records.
+
+    The manifest controls membership. Sorting produces canonical order before
+    the training-only shuffle in the TensorFlow input pipeline.
+    """
+    if split not in {"train", "validation", "test"}:
+        raise ValueError("split must be train, validation, or test")
+    by_name = {record.filename: record for record in records}
+    if len(by_name) != len(records):
+        raise ValueError("dataset records contain duplicate filenames")
+    filenames = manifest["splits"][split]
+    missing = sorted(set(filenames) - set(by_name))
+    if missing:
+        raise ValueError(f"manifest contains filenames missing from data: {missing[:5]}")
+    return [by_name[name] for name in sorted(filenames)]
+
+
 def _validate_manifest(manifest):
     if not isinstance(manifest, dict) or manifest.get("dataset") != "FloPWD":
         raise ValueError("manifest dataset must be FloPWD")
