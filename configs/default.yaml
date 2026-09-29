@@ -1,0 +1,13 @@
+seed: 42
+image_size: [224, 224]
+batch_size: 32
+epochs: 10
+image_limit: null  # null means all verified label rows
+negative_to_positive_ratio: 1
+paths:
+  flopwd: data/FloPWD
+  ugv: data/UGV_NWBWASTE
+  output_dir: outputs
+evaluation:
+  classification_threshold: 0.5
+  # Evaluate separately by dataset/source; never combine source and class labels.

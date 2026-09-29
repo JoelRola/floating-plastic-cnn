@@ -1,0 +1,27 @@
+data/*
+!data/README.md
+
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.idea/
+.vscode/
+.env
+*.h5
+*.keras
+*.ckpt
+*.weights.h5
+checkpoints/
+runs/
+outputs/
+*.zip
+*.mp4
+
+# Local dataset exports
+FloPWD/
+FlOPWD/
+UGV_NWBWASTE/
+**/Raw_Images/
+**/Segmentation_Masks/
