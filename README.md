@@ -28,7 +28,16 @@ The 0% baseline specificity is notable because the overall accuracy alone hid a 
 
 ## Data and setup
 
-Datasets are not included. See [`data/README.md`](data/README.md) for the expected layout and current schema limitations. Download links will be added from the original public sources after their provenance and licence details are verified.
+Datasets are not included. See [`data/README.md`](data/README.md) for the original source citations, licence information, expected layout, and current schema limitations.
+
+Inspect local metadata without decoding image pixels or training:
+
+```bash
+python scripts/inspect_data.py --dataset flopwd --path data/FloPWD
+python scripts/inspect_data.py --dataset ugv --path data/UGV_NBWASTE
+```
+
+For FloPWD, add `--write-split-manifest` to save a deterministic, stratified 70/15/15 filename manifest under `experiments/splits/`. The checked-in seed-42 manifest is a portfolio split, not the dissertation split.
 
 For model work, create a Python environment and install the packages in `requirements.txt`. TensorFlow installation depends on the target operating system and accelerator; choose a compatible TensorFlow build for your environment. For lightweight local tests, install `requirements-dev.txt` instead. The tests do not instantiate ResNet50 or download pretrained weights.
 

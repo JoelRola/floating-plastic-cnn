@@ -20,4 +20,4 @@ The reported 0% baseline specificity indicates failure to correctly classify neg
 
 ## B. Reproduced portfolio results
 
-Reproduction is pending. No refactored-model result is reported here. Results will be added only after the split protocol, dataset labels, preprocessing, and evaluation outputs have been checked and recorded.
+Reproduction is pending. No refactored-model result is reported here. The portfolio protocol uses a separate deterministic, stratified FloPWD 70/15/15 filename manifest for train, validation, and untouched test partitions. Severity MAE will be computed in percentage points with sample counts. UGV will be reported separately and will not provide specificity in the absence of clean-water negatives. Results will be added only after the split, label semantics, preprocessing, and evaluation outputs have been checked and recorded.

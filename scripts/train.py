@@ -8,7 +8,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from floating_plastic.data import load_flopwd_labels, load_ugv_labels
+from floating_plastic.data import load_flopwd, load_ugv
 
 
 def main():
@@ -22,9 +22,9 @@ def main():
     config = yaml.safe_load(args.config.read_text(encoding="utf-8"))
     flopwd = args.flopwd or Path(config["paths"]["flopwd"])
     limit = args.image_limit if args.image_limit is not None else config.get("image_limit")
-    rows = load_flopwd_labels(flopwd, image_limit=limit)
+    rows = load_flopwd(flopwd, image_limit=limit)
     if args.ugv:
-        load_ugv_labels(args.ugv)
+        load_ugv(args.ugv)
     raise SystemExit(
         f"Validated {len(rows)} FloPWD label rows (seed={args.seed if args.seed is not None else config['seed']}). "
         "Training orchestration is pending a verified split protocol and image/label audit; no model was trained."

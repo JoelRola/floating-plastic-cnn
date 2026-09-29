@@ -17,4 +17,5 @@ jobs:
       - run: python scripts/train.py --help
       - run: python scripts/evaluate.py --help
       - run: python scripts/predict.py --help
+      - run: python scripts/inspect_data.py --help
       - run: python -m pytest -q
