@@ -1,0 +1,85 @@
+# Frozen before evaluating Model B on either final test set.
+# This is an experiment plan, not a result or a claim of exact replication.
+matrix_id: heterogeneous_floating_waste_seed42_v1
+compute_budget_strategy: matched_optimizer_steps
+control_provenance:
+  run: runs/flopwd_original_seed42
+  metadata_sha256: d68cd60fb7b0db8dd5ef8612bd113488358d0f16fac5406553b2237cf4863394
+  train_records: 1402
+  optimizer: Adam
+  batch_size: 32
+  epochs: 15
+  learning_rate: 0.001
+  seed: 42
+  backbone_trainable: false
+  loss_weights:
+    classification: 1.0
+    severity: 0.5
+  classification_threshold: 0.5
+  steps_per_epoch: 44
+  total_optimizer_steps: 660
+shared_protocol:
+  architecture:
+    backbone: ResNet50
+    weights: imagenet
+    include_top: false
+    input_shape: [224, 224, 3]
+    dense_units: [256, 128]
+    dropout_rates: [0.3, 0.2]
+    backbone_trainable: false
+    severity_output: sigmoid_scaled_0_to_100_percentage_points
+  preprocessing: keras.applications.resnet.preprocess_input
+  optimizer: Adam
+  learning_rate: 0.001
+  epochs: 15
+  batch_size: 32
+  seed: 42
+  loss_functions:
+    classification: masked_binary_crossentropy
+    severity: masked_mae_percentage_points
+  loss_weights:
+    classification: 1.0
+    severity: 0.5
+  classification_threshold: 0.5
+  split_manifests:
+    flopwd: experiments/splits/flopwd_seed42.json
+    flopwd_sha256: 0bf57e14bce71eb3bfc25fa19e8a27bd123c6dca575cc975efc691ee7bc4bbac
+    ugv: experiments/splits/ugv_grouped_seed42.json
+    ugv_sha256: 6fef0d9e888393a373f85f5a0f7b9aab7efde35371dda01c044d50c817831c00
+  training_budget:
+    steps_per_epoch: 44
+    epochs: 15
+    total_optimizer_steps: 660
+  validation: separate_by_domain_each_epoch
+  test: untouched_until_model_b_training_is_complete
+  seed_policy: tensorflow_set_random_seed_and_deterministic_ops_requested
+matrix:
+  A:
+    name: flopwd_only_control
+    experiment_type: original
+    sources: [flopwd]
+    domain_sampling: proportional_single_domain
+    flopwd_class_balance: original
+    status: completed_control
+  B:
+    name: multidomain
+    experiment_type: multidomain
+    sources: [flopwd, ugv]
+    domain_sampling: balanced
+    expected_domain_probability:
+      flopwd: 0.5
+      ugv: 0.5
+    flopwd_class_balance: original
+    actual_unique_source_exhaustion_per_epoch: false
+    status: frozen_to_run
+  C:
+    name: multidomain_class_balanced
+    experiment_type: multidomain_class_balanced
+    sources: [flopwd, ugv]
+    domain_sampling: balanced
+    expected_domain_probability:
+      flopwd: 0.5
+      ugv: 0.5
+    flopwd_class_balance: "1:1 negative:positive within FloPWD train only"
+    ugv_class_balance: unavailable_positive_only_target
+    status: frozen_not_started
