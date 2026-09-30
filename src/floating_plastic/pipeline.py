@@ -57,3 +57,80 @@ def make_tf_dataset(records, batch_size, image_size=(224, 224), training=False, 
         )
     dataset = dataset.batch(int(batch_size), drop_remainder=False)
     return dataset.prefetch(tf.data.AUTOTUNE)
+
+
+def domain_sampling_weights(domain_sizes, strategy="balanced"):
+    """Return per-domain sample probabilities, independent of class balancing."""
+    if strategy not in {"balanced", "proportional"}:
+        raise ValueError("domain strategy must be 'balanced' or 'proportional'")
+    names = sorted(domain_sizes)
+    if not names or any(int(domain_sizes[name]) <= 0 for name in names):
+        raise ValueError("every sampled domain must contain records")
+    raw = ({name: 1.0 for name in names} if strategy == "balanced" else
+           {name: float(domain_sizes[name]) for name in names})
+    total = sum(raw.values())
+    return {name: raw[name] / total for name in names}
+
+
+def make_multidomain_tf_dataset(records_by_domain, batch_size, image_size=(224, 224),
+                                training=True, seed=42, strategy="balanced",
+                                flopwd_negative_to_positive=None):
+    """Sample domains independently, then stream mixed batches with task masks.
+
+    Training datasets repeat within domain before weighted sampling. Validation
+    and test should remain separate datasets per source domain and must not use
+    this mixed metric path. Optional class balancing applies only to FloPWD.
+    """
+    tf = _tensorflow()
+    if not training:
+        raise ValueError("keep validation/test datasets domain-specific; build them separately")
+    records_by_domain = {str(k): list(v) for k, v in records_by_domain.items() if v}
+    if not records_by_domain or any(not values for values in records_by_domain.values()):
+        raise ValueError("each requested domain must have records")
+    if any(record.source_domain != domain for domain, records in records_by_domain.items() for record in records):
+        raise ValueError("record source_domain does not match records_by_domain key")
+
+    # Class balancing is a separate operation restricted to labeled FloPWD train records.
+    if flopwd_negative_to_positive is not None:
+        from .balancing import balance_indices
+        if "flopwd" not in records_by_domain:
+            raise ValueError("class balancing requires FloPWD records")
+        labels = [record.classification_target for record in records_by_domain["flopwd"]]
+        indices = balance_indices(labels, int(flopwd_negative_to_positive), seed=int(seed))
+        records_by_domain["flopwd"] = [records_by_domain["flopwd"][int(i)] for i in indices]
+
+    domain_names = sorted(records_by_domain)
+    weights = domain_sampling_weights({name: len(records_by_domain[name]) for name in domain_names}, strategy)
+    datasets = []
+    for domain_index, domain in enumerate(domain_names):
+        ordered = sorted(records_by_domain[domain], key=lambda record: record.filename)
+        paths = [str(record.image_path) for record in ordered]
+        class_targets = pack_masked_targets(
+            [record.classification_target for record in ordered],
+            [record.classification_target_available for record in ordered],
+        )
+        severity_targets = pack_masked_targets(
+            [record.severity_target for record in ordered],
+            [record.severity_target_available for record in ordered],
+        )
+        raw = tf.data.Dataset.from_tensor_slices(
+            (paths, {"classification": class_targets, "severity": severity_targets})
+        )
+        options = tf.data.Options()
+        options.experimental_deterministic = True
+        raw = raw.with_options(options)
+        raw = raw.map(lambda path, targets: (decode_resize_rgb(path, image_size), targets),
+                      num_parallel_calls=tf.data.AUTOTUNE, deterministic=True)
+        raw = raw.shuffle(len(ordered), seed=int(seed) + domain_index,
+                          reshuffle_each_iteration=True).repeat()
+        datasets.append(raw)
+    mixed = tf.data.Dataset.sample_from_datasets(
+        datasets, weights=[weights[name] for name in domain_names], seed=int(seed), stop_on_empty_dataset=False
+    )
+    steps = (sum(len(records) for records in records_by_domain.values()) + int(batch_size) - 1) // int(batch_size)
+    return mixed.batch(int(batch_size), drop_remainder=False).prefetch(tf.data.AUTOTUNE), steps
+
+
+def pack_masked_targets(values, available):
+    from .losses import pack_masked_targets as pack
+    return pack(values, available)

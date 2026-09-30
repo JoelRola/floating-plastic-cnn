@@ -2,18 +2,24 @@
 
 ## Intended use
 
-Research and educational exploration of floating-plastic image classification and image-area coverage estimation. This project is not validated for operational environmental monitoring or policy decisions.
+Research and educational exploration of plastic/waste image classification and FloPWD image-area coverage estimation. The work is not validated for operational environmental monitoring or policy decisions.
 
-## Model
+## Model and tasks
 
-The implemented architecture uses ImageNet-pretrained ResNet50 transfer learning (`include_top=False`), global average pooling, shared dense/dropout layers, and binary classification and bounded coverage regression heads. The default freezes the backbone. The classification head is sigmoid; the regression head is sigmoid scaled to 0-100 percentage points. No validated checkpoint is included.
+The model uses ImageNet-pretrained ResNet50 (`include_top=False`), global average pooling, shared dense/dropout layers, a sigmoid classification head, and a severity head bounded to 0–100 percentage points. Input is resized RGB with official Keras ResNet preprocessing embedded in the graph. The historical appendix instead divides RGB values by 255.
 
-The cleaned model applies official `keras.applications.resnet.preprocess_input` to resized RGB pixels. The historical appendix instead divided pixels by 255. This difference is explicit; historical metrics must not be attributed to this implementation.
+Portfolio design uses partial supervision rather than forcing heterogeneous labels into one format: FloPWD supplies binary plastic-presence and coverage-regression targets; UGV can supply a positive annotated-waste-presence target where OBB labels support it. UGV does not supply coverage labels. A masked task loss excludes unavailable targets. This combined design has not yet been trained or evaluated.
 
-## Data
+## Data and label semantics
 
-The dissertation describes FloPWD and UGV-NBWASTE. The local FloPWD labels include eight positive binary labels with zero coverage. The local UGV copy has no `data.yaml`; class IDs 0–6 are visible, but the semantic mapping is unresolved. Dataset licences remain with their original sources.
+FloPWD contains aerial scenes and image-level plastic labels plus image-area coverage percentages. Its eight positive-label/zero-coverage observations are retained as provided.
+
+The inspected complete UGV v13 export has 3,600 ground-level images and a local `data.yaml` mapping for IDs 0–7. Every image has a non-empty annotation in this copy. The image-level UGV target is “annotated waste present”; it is not a clean-water-negative label and is not generalized to plastic presence for every semantic category. Empty and nonmatching annotations are unavailable, not negative. A filename-derived group split prevents detected same-stem variants from spanning partitions.
 
 ## Evaluation and limitations
 
-Historical dissertation figures are not reproduced results. Portfolio evaluation uses a deterministic stratified FloPWD train/validation/test filename manifest and an untouched test split. UGV is not scored in this phase; future OOD analysis requires its target mapping to be verified. UGV alone cannot estimate specificity for plastic-versus-clean-water classification. Local UGV variants share apparent source IDs across splits. Protocol concerns are documented in [`reproducibility.md`](reproducibility.md). Performance across locations, conditions, and devices is not established. The target runtime is Python 3.10 with TensorFlow 2.15.x; the lightweight test environment does not contain TensorFlow.
+The FloPWD-only portfolio control has been completed and is recorded in [`results.md`](results.md). The combined model remains unverified. Report FloPWD metrics separately from UGV positive recall/probability distribution. UGV positive-only data cannot support specificity, balanced accuracy, or binary accuracy. A cross-domain positive-recall difference is descriptive and reflects different domains and positive-target semantics.
+
+Domain shift includes aerial versus ground viewpoint, geography, camera, background, image scale, and acquisition method. Filename grouping cannot identify differently named duplicates. The current OBB coordinates also include values outside [0,1]; no auxiliary box task is trained in this phase. No checkpoint is distributed.
+
+Dataset licences remain with their sources. Runtime and protocol details are in [`reproducibility.md`](reproducibility.md).

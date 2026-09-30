@@ -8,6 +8,10 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from floating_plastic.data import inspect_flopwd, inspect_ugv
+from floating_plastic.group_splits import (
+    make_ugv_grouped_split_manifest, ugv_leakage_report,
+    write_ugv_grouped_split_manifest,
+)
 from floating_plastic.splits import make_split_manifest, write_split_manifest
 
 
@@ -42,7 +46,7 @@ def _inspect_flopwd(path, image_limit, seed, manifest_path):
         print(f"Filename-only split manifest written: {manifest_path}")
 
 
-def _inspect_ugv(path):
+def _inspect_ugv(path, seed=42, write_grouped=False, write_leakage=False):
     audit = inspect_ugv(path)
     print(f"Dataset: UGV-NBWASTE\nRoot: {audit.root}")
     print(f"Class metadata: {'found' if audit.class_names is not None else 'MISSING (class IDs not mapped)'}")
@@ -65,6 +69,20 @@ def _inspect_ugv(path):
         print(f"Cross-split overlap examples: {examples}")
     if audit.class_names is None:
         print("Note: UGV image-level plastic labels are not inferred from raw object IDs.")
+    eligible = sum(bool(record.class_ids) for record in audit.records)
+    print(f"Defensible annotated-waste-present image records: {eligible}/{len(audit.records)}")
+    if write_leakage:
+        report = ugv_leakage_report(audit.records)
+        output = Path("experiments/splits/ugv_leakage_report.json")
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(__import__("json").dumps(report, indent=2) + "\n", encoding="utf-8")
+        print(f"Filename-derived split leakage report written: {output}")
+    if write_grouped:
+        manifest = make_ugv_grouped_split_manifest(audit.records, seed=seed)
+        output = Path("experiments/splits") / f"ugv_grouped_seed{seed}.json"
+        write_ugv_grouped_split_manifest(manifest, output)
+        print(f"Grouped filename-only split written: {output}")
+        print(f"Grouped partition counts (groups/images): {manifest['counts']}")
 
 
 def main():
@@ -78,11 +96,17 @@ def main():
         action="store_true",
         help="For FloPWD only, write a filename-only manifest under experiments/splits/",
     )
+    parser.add_argument("--write-grouped-split", action="store_true",
+                        help="For UGV only, write deterministic source-grouped manifest")
+    parser.add_argument("--write-leakage-report", action="store_true",
+                        help="For UGV only, write a report for the export's current partitions")
     args = parser.parse_args()
     if args.image_limit is not None and args.image_limit < 1:
         parser.error("--image-limit must be positive")
     if args.dataset == "ugv" and args.write_split_manifest:
         parser.error("--write-split-manifest is currently supported only for FloPWD")
+    if args.dataset == "flopwd" and (args.write_grouped_split or args.write_leakage_report):
+        parser.error("UGV split/report options are only supported for --dataset ugv")
     if args.dataset == "flopwd":
         manifest_path = (
             Path("experiments/splits") / f"flopwd_seed{args.seed}.json"
@@ -91,7 +115,7 @@ def main():
         )
         _inspect_flopwd(args.path, args.image_limit, args.seed, manifest_path)
     else:
-        _inspect_ugv(args.path)
+        _inspect_ugv(args.path, args.seed, args.write_grouped_split, args.write_leakage_report)
 
 
 if __name__ == "__main__":

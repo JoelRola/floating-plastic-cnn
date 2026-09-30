@@ -1,0 +1,49 @@
+# Experiment profiles inherit the model/runtime values from default.yaml.
+# These definitions are design only; combined profiles have not been trained.
+profiles:
+  flopwd_only:
+    datasets: [flopwd]
+    split_manifests:
+      flopwd: experiments/splits/flopwd_seed42.json
+    domain_sampling:
+      strategy: proportional
+    class_balancing:
+      enabled: false
+      scope: flopwd_train_only
+
+  multidomain:
+    datasets: [flopwd, ugv]
+    split_manifests:
+      flopwd: experiments/splits/flopwd_seed42.json
+      ugv: experiments/splits/ugv_grouped_seed42.json
+    domain_sampling:
+      strategy: balanced
+    class_balancing:
+      enabled: false
+      scope: none
+    ugv_target:
+      name: annotated_waste_present
+      included_class_ids: null
+      empty_annotations: unavailable
+    validation_and_test: separate_by_domain
+
+  multidomain_class_balanced:
+    datasets: [flopwd, ugv]
+    split_manifests:
+      flopwd: experiments/splits/flopwd_seed42.json
+      ugv: experiments/splits/ugv_grouped_seed42.json
+    domain_sampling:
+      strategy: balanced
+    class_balancing:
+      enabled: true
+      scope: flopwd_train_only
+      negative_to_positive: 1
+      seed: 42
+      rationale: >-
+        UGV is positive-only for annotated-waste presence and supplies no defensible
+        clean-water negatives; class balancing is therefore performed only within FloPWD.
+    ugv_target:
+      name: annotated_waste_present
+      included_class_ids: null
+      empty_annotations: unavailable
+    validation_and_test: separate_by_domain

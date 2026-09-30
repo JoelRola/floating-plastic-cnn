@@ -111,3 +111,57 @@ def severity_mae(y_true_percentage_points, y_pred_percentage_points):
     return severity_regression_metrics(y_true_percentage_points, y_pred_percentage_points)[
         "mae_percentage_points"
     ]
+
+
+def positive_only_metrics(probabilities, threshold=0.5):
+    """Report positive recall and score distribution without negative-class claims."""
+    values = [float(value) for value in probabilities]
+    if not values or any(not math.isfinite(value) or not 0 <= value <= 1 for value in values):
+        raise ValueError("probabilities must be a non-empty sequence in [0, 1]")
+    predictions = threshold_predictions(values, threshold)
+    ordered = sorted(values)
+
+    def quantile(fraction):
+        position = (len(ordered) - 1) * fraction
+        lower = int(position)
+        upper = min(lower + 1, len(ordered) - 1)
+        return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
+
+    return {
+        "sample_count": len(values),
+        "positive_recall": sum(predictions) / len(predictions),
+        "predicted_positive_count": sum(predictions),
+        "threshold": float(threshold),
+        "predicted_probability_distribution": {
+            "min": ordered[0], "q25": quantile(0.25), "median": quantile(0.5),
+            "mean": sum(ordered) / len(ordered), "q75": quantile(0.75), "max": ordered[-1],
+        },
+        "specificity": None,
+        "accuracy": None,
+    }
+
+
+def multidomain_evaluation(flopwd_true, flopwd_probabilities, flopwd_severity_true,
+                           flopwd_severity_predicted, ugv_waste_present_probabilities,
+                           threshold=0.5):
+    """Return domain-separated scores plus descriptive positive-recall gap."""
+    flo_pred = threshold_predictions(flopwd_probabilities, threshold)
+    flo_class = classification_metrics(flopwd_true, flo_pred)
+    flo_positive_recall = flo_class["sensitivity"]
+    flo = {
+        "classification": flo_class,
+        "severity_all": severity_regression_metrics(flopwd_severity_true, flopwd_severity_predicted),
+        "positive_recall": flo_positive_recall,
+    }
+    ugv = positive_only_metrics(ugv_waste_present_probabilities, threshold)
+    return {
+        "flopwd": flo,
+        "ugv_annotated_waste_present": ugv,
+        "cross_domain_positive_recall_gap": {
+            "absolute_difference": abs(flo_positive_recall - ugv["positive_recall"]),
+            "interpretation": (
+                "descriptive difference between FloPWD plastic-positive recall and UGV annotated-waste "
+                "recall; targets and domains differ, so this is not accuracy degradation"
+            ),
+        },
+    }

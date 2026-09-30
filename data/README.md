@@ -1,6 +1,6 @@
 # Dataset sources and local layout
 
-Datasets are not redistributed by this repository. Download the data from the original source and review its licence and version terms before use. The expected local layout is:
+Datasets are not redistributed here. Download links point to the original public sources; users must follow the version-specific terms and licences. Keep downloaded data outside Git.
 
 ```text
 data/
@@ -9,7 +9,7 @@ data/
 │   ├── Segmentation_Masks/
 │   ├── Image_labels_Binary Classification Task.csv
 │   └── Mask_foreground_percentages_Regression Task.csv
-└── UGV_NWBWASTE/
+└── UGV_NBWASTE/
     ├── data.yaml
     ├── train/{images,labels}/
     ├── valid/{images,labels}/
@@ -18,20 +18,18 @@ data/
 
 ## FloPWD
 
-**Official title:** Dal Lake Floating Plastic Waste Detection Dataset (FloPWD 2025), Mendeley Data version 2, DOI [10.17632/znxjncgjkc.2](https://doi.org/10.17632/znxjncgjkc.2). The source describes approximately 2,000 1280 × 720 aerial images, binary presence labels, segmentation masks, and a per-image foreground-coverage CSV. The source lists a **CC BY 4.0** licence.
+**Official title:** Dal Lake Floating Plastic Waste Detection Dataset (FloPWD 2025), Mendeley Data version 2, DOI [10.17632/znxjncgjkc.2](https://doi.org/10.17632/znxjncgjkc.2). The dataset describes aerial imagery, binary plastic-presence labels, segmentation masks, and per-image foreground coverage. The listed licence is CC BY 4.0.
 
-The local copy inspected for this project has the exact directory and filenames shown above. Each of 2,002 images has one row in both CSVs and one correspondingly named mask. The image-area severity percentages range from 0 to 81.91. Eight records are labelled plastic-present while their coverage CSV value is zero; inspection reports this discrepancy without changing either label. Severity is described by the dataset source as derived from the corresponding segmentation masks.
+The inspected local version has 2,002 images, corresponding rows in both CSV files and 2,002 masks. Coverage is in percentage points from 0 to 81.91 and is described as mask-derived. Eight positive binary labels have zero coverage; the loader and training pipeline preserve these source values.
 
 ## UGV-NBWASTE
 
-**Official title:** UGV-NBWASTE: An Oriented Non-Biodegradable Waste Dataset in Bangladesh, Mendeley Data version 3, DOI [10.17632/fv28xxn4f3.3](https://doi.org/10.17632/fv28xxn4f3.3). The dataset page lists **CC BY 4.0**. The associated Data in Brief paper is [10.1016/j.dib.2025.111559](https://doi.org/10.1016/j.dib.2025.111559): Md Riadul Islam et al., "UGV-NBWASTE: An oriented dataset for non-biodegradable waste in Bangladesh," *Data in Brief* 60 (2025), 111559.
+**Official title:** UGV-NBWASTE: An Oriented Non-Biodegradable Waste Dataset in Bangladesh, Mendeley Data version 3, DOI [10.17632/fv28xxn4f3.3](https://doi.org/10.17632/fv28xxn4f3.3), listed as CC BY 4.0. Associated paper: Md Riadul Islam et al., “UGV-NBWASTE: An oriented dataset for non-biodegradable waste in Bangladesh,” *Data in Brief* 60 (2025), 111559, [DOI 10.1016/j.dib.2025.111559](https://doi.org/10.1016/j.dib.2025.111559). The [Roboflow v13 export](https://universe.roboflow.com/ugv-nbwaste/ugv-nbwaste/dataset/13) identifies the version inspected here.
 
-The [UGV-NBWASTE Roboflow Universe project](https://universe.roboflow.com/ugv-nbwaste/ugv-nbwaste) currently lists nine class labels, while the paper describes eight. Its [version history](https://universe.roboflow.com/ugv-nbwaste/ugv-nbwaste/dataset/13) includes a 6,030-image earlier version and later 3,600-image versions. This is consistent with a changing export/schema history, but does not prove the provenance of the local 6,030-image copy.
+The complete local v13 export has 2,160/720/720 images across train/valid/test, 3,600 total, with one non-empty annotation file per image. The size and nominal 60/20/20 split match the publication's reported dataset totals, although this export's filename-derived groups still cross partitions. It has 4,095 OBB rows. Its local `data.yaml` is authoritative for parsing this export and maps IDs as follows: 0 bottle, 1 cocksheet, 2 hardplastic, 3 mask, 4 medicine, 5 packet, 6 polythene, 7 sandal. This order and exact spelling are local export metadata; do not transfer it to other UGV versions. A second local folder has a seven-ID YAML and model weights but no image split directories, so it is not used by this pipeline. Earlier project notes described a 6,030-image copy; that image export is not present in the currently inspected directories, so its relationship to the complete v13 folder is unresolved.
 
-The paper describes eight categories: Plastic Bottle, Hard Plastic, Mask, Medicine Packet, Packet, Polythene, Cocksheet (Styrofoam), and Plastic Sandal. A YOLO-OBB export needs its own `data.yaml` to map numeric IDs to names. The local copy inspected here has no `data.yaml` or dataset README, and only raw class IDs 0-6 appear in annotation text. The semantic mapping and the status of the unobserved eighth category cannot be recovered safely from annotation IDs alone. The loader therefore requires local class-name metadata and does not infer binary plastic labels from IDs. The local OBB files have class ID plus eight corner coordinates; 125 non-empty box rows have coordinates outside the normalized 0-1 range, with observed extrema -0.1436 and 1.1398. The parser retains these finite source values without clipping.
+The original export partitions have 25 filename-derived source groups crossing splits. See [`../experiments/splits/ugv_leakage_report.json`](../experiments/splits/ugv_leakage_report.json). The portfolio grouped manifest `../experiments/splits/ugv_grouped_seed42.json` assigns all variants of a canonical filename-derived group to one partition. Canonicalization removes only a terminal `.rf.<hex hash>` suffix. It is a reproducible grouping proxy, not proof that different IDs correspond to different source photos. The resulting grouped split has train 2,484 groups/2,522 images, validation 533/542, and test 532/536; it does not claim to reproduce the publication split.
 
-The local directory contains `train`, `valid`, and `test` splits with `images/` and `labels/` subdirectories. The export contains 4,824 / 603 / 603 images respectively (6,030 total), 7,563 annotated OBB rows, and 18 empty annotation files. Filenames use Roboflow-style `.rf.<hash>` suffixes. Removing that suffix reveals 980 source-like filename IDs represented in more than one split. These findings indicate repeated/derived exports and split overlap by apparent source ID; they do not establish the exact augmentation or export history. The original dataset paper describes 3,600 images, 4,095 annotations, and a 60/20/20 split, while the local copy is 80/10/10. The local split is therefore not assumed to be the paper's published split.
+UGV contains waste-object annotations, not curated clean-water negatives. A non-empty label file supports an image-level **annotated waste present** target; it is not automatically a “plastic present” label for every class. Empty or nonmatching records are label-unavailable, never clean-water negatives. UGV does not provide a comparable mask-derived coverage target; no severity is inferred from OBBs.
 
-UGV-NBWASTE contains waste-object annotations, not a curated clean-water negative class. The current multi-head model produces image-level classification and regression outputs, not object detections. Its image-level outputs could be assessed out of domain only after a documented mapping from the local object categories to the task's definition of “plastic present.” UGV alone cannot estimate specificity for plastic-versus-clean-water classification. Empty annotation files are not automatically treated as clean-water negatives.
-
-The local metadata inspection used filenames, CSV/YAML metadata, and annotation text only; image pixels were not scanned. Links identify the authoritative dataset and paper records. Dataset downloads will remain external to Git.
+Dataset inspection reads paths, CSV/YAML metadata, and annotation text; it does not modify source files or scan image pixels. Downloaded datasets and model weights remain outside Git.

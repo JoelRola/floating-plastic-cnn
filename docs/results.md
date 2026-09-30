@@ -2,7 +2,7 @@
 
 ## A. Historical dissertation results
 
-These values are reported in the dissertation materials and have not yet been reproduced by this repository:
+These values are historical, report-derived results and are not outputs of the refactored code:
 
 | Metric | Historical reported value |
 |---|---:|
@@ -14,10 +14,24 @@ These values are reported in the dissertation materials and have not yet been re
 | Severity MAE | 5.3 percentage points |
 | Mean classification confidence | 93% |
 
-Specificity and sensitivity were not both derived solely from the positive-only UGV set. The original evaluation construction and other caveats are described in [reproducibility](reproducibility.md).
-
-The reported 0% baseline specificity indicates failure to correctly classify negative examples. This failure mode is obscured when only overall accuracy is considered.
+Specificity and sensitivity were not both derived solely from the positive-only UGV set. The reported 0% specificity shows how overall accuracy can hide a majority-class failure mode.
 
 ## B. Reproduced portfolio results
 
-Reproduction is pending. The refactored pipeline is implemented, but no training or test evaluation has been run, so no portfolio metric is reported here. The protocol uses a separate deterministic, stratified FloPWD 70/15/15 filename manifest for train, validation, and untouched test partitions. Severity MAE will be computed in percentage points with sample counts, for all test samples and separately for plastic-positive samples. UGV remains a future OOD source and will not provide specificity in the absence of clean-water negatives. Results will be added only after an actual run and its split, label semantics, preprocessing, and outputs have been checked and recorded.
+### FloPWD-only control
+
+The full unbalanced FloPWD baseline is complete and is the control for future comparisons. Its run artifacts remain local under ignored `runs/flopwd_original_seed42` and were not altered in Phase 5.
+
+| Test metric | Portfolio control |
+|---|---:|
+| Accuracy | 96.0% |
+| Balanced accuracy | 96.05% |
+| Sensitivity | 95.95% |
+| Specificity | 96.15% |
+| Severity MAE | 2.17 percentage points |
+
+This is not an exact historical replication: it uses a deterministic stratified 70/15/15 split, official ResNet50 preprocessing, bounded severity output, and a separate held-out test protocol.
+
+### Combined FloPWD + UGV
+
+Combined training and evaluation are pending. The grouped UGV manifest and masked multi-task/domain-sampling framework are prepared, but no combined metrics are available. Do not interpret the profile definitions as experimental results.

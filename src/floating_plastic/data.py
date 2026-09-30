@@ -30,6 +30,33 @@ class UGVRecord:
     annotation_path: Path
     class_ids: tuple[int, ...]
     empty_annotation: bool
+    canonical_source_id: str = ""
+    annotation_count: int = 0
+    source_dataset: str = "ugv"
+
+
+@dataclass(frozen=True)
+class HeterogeneousRecord:
+    """A sample with explicit per-task label availability."""
+    filename: str
+    image_path: Path
+    classification_target: int | None
+    classification_target_available: bool
+    severity_target: float | None
+    severity_target_available: bool
+    source_domain: str
+
+    def __post_init__(self):
+        if self.source_domain not in {"flopwd", "ugv"}:
+            raise ValueError("source_domain must be 'flopwd' or 'ugv'")
+        if self.classification_target_available != (self.classification_target is not None):
+            raise ValueError("classification target and availability flag disagree")
+        if self.severity_target_available != (self.severity_target is not None):
+            raise ValueError("severity target and availability flag disagree")
+        if self.classification_target is not None and self.classification_target not in (0, 1):
+            raise ValueError("classification_target must be 0, 1, or None")
+        if self.severity_target is not None and not 0 <= self.severity_target <= 100:
+            raise ValueError("severity_target must be percentage points in [0, 100]")
 
 
 @dataclass
@@ -234,6 +261,38 @@ def parse_obb_annotation(path, class_names=None) -> tuple[int, ...]:
     return tuple(classes)
 
 
+_ROBOFLOW_SUFFIX = re.compile(r"\.rf\.([0-9a-f]{16,})$", re.IGNORECASE)
+
+
+def canonical_ugv_source_id(filename: str) -> str:
+    """Strip a Roboflow ``.rf.<hex hash>`` suffix from a filename stem.
+
+    This is a filename-derived grouping proxy, not proof of physical source-image
+    identity. Unrecognized suffixes are retained rather than guessed away.
+    """
+    stem = Path(filename).stem
+    return _ROBOFLOW_SUFFIX.sub("", stem).casefold()
+
+
+def heterogeneous_flopwd_record(record: FloPWDRecord) -> HeterogeneousRecord:
+    return HeterogeneousRecord(record.filename, record.image_path, record.binary_label, True,
+                               record.severity_percent, True, "flopwd")
+
+
+def heterogeneous_ugv_record(record: UGVRecord, included_class_ids=None) -> HeterogeneousRecord:
+    """Map annotations to annotated-waste presence, never clean-water absence.
+
+    When a class inclusion set is supplied, only records containing one of those
+    class IDs are eligible. Empty/nonmatching records have unavailable labels.
+    UGV never receives a severity target.
+    """
+    included = None if included_class_ids is None else set(map(int, included_class_ids))
+    present = bool(record.class_ids) if included is None else bool(set(record.class_ids) & included)
+    target = 1 if present else None
+    return HeterogeneousRecord(record.filename, record.image_path, target, present,
+                               None, False, "ugv")
+
+
 def inspect_ugv(root) -> UGVAudit:
     """Inspect YOLO-OBB files, retaining raw IDs if class YAML is absent."""
     root = Path(root)
@@ -268,8 +327,9 @@ def inspect_ugv(root) -> UGVAudit:
                 if fields and len(fields) == 9:
                     coords = [float(value) for value in fields[1:]]
                     out_of_bounds_boxes += int(any(value < 0 or value > 1 for value in coords))
-            records.append(UGVRecord(split, image.name, image, label, class_ids, not class_ids))
-            source_id = re.sub(r"\.rf\.[^.]+$", "", image.stem, flags=re.IGNORECASE)
+            source_id = canonical_ugv_source_id(image.name)
+            records.append(UGVRecord(split, image.name, image, label, class_ids, not class_ids,
+                                     source_id, len(class_ids)))
             source_splits.setdefault(source_id, set()).add(split)
     duplicate_source_ids = {
         source_id: sorted(splits)

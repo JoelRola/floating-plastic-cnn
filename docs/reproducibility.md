@@ -1,41 +1,46 @@
-# Reproducibility notes
+# Reproducibility
 
-The appendix implementation is preserved in `legacy/appendix_main.py`. Its results are historical claims; the cleaned package does not claim to reproduce them.
+## Historical appendix differences and limitations
 
-Known issues and uncertainties in the appendix version:
+The appendix source remains available at `legacy/appendix_main.py`; it has not been rewritten as part of this phase. Its known issues include:
 
-- **Dataset paths:** the script expects `./data/FlOPWD`, while its README says `./data/FloPWD`; the supplied FloPWD archive is nested under a longer directory name. Case differences also affect case-sensitive systems.
-- **Partial image limits:** FloPWD is capped at 500 rows and UGV at 100 directory entries by defaults in the script. Directory order is not sorted, so selected samples may vary.
-- **Evaluation/test split:** validation negatives are reused in the constructed test set. The test positives come from UGV while negatives come from FloPWD, confounding source and class. The UGV loader also takes training images rather than its named test split.
-- **Random seeds:** the split receives a fixed seed, but NumPy oversampling and TensorFlow initialization are not seeded comprehensively.
-- **UGV labels:** every loaded UGV image is assigned a positive label without reading its annotations or verifying class IDs.
-- **Regression evaluation:** the script trains a coverage output but reports no regression metric. The poster's severity MAE therefore cannot be verified from the supplied script alone.
-- **Preprocessing:** appendix images are RGB and scaled to [0, 1]. Keras ResNet50 expects its application-specific preprocessing; the exact historical training environment and preprocessing are not established here.
-- **Balancing comparison:** the appendix trains baseline and balanced variants for different epoch counts (10 and 15), so the comparison changes more than class ratio.
-- **Metrics:** the comparison plot labels accuracy as balanced accuracy. They happen to agree on an exactly balanced evaluation set, but are different metrics in general.
+- **Dataset paths:** path spellings differ between code and README (`FlOPWD`/`FloPWD`) and use a relative local layout.
+- **Partial image limits:** hidden/default sample caps select subsets; directory traversal order was not reliably deterministic.
+- **Evaluation split:** constructed evaluation mixes FloPWD negative examples and UGV positive examples, confounding source and class. Some validation examples are reused, and the UGV loader does not consistently use its designated held-out split.
+- **Randomness:** not every NumPy/TensorFlow source was seeded.
+- **UGV target assumptions:** images were treated as positive without validating annotation contents or class IDs; empty annotations were not distinguished from labeled negatives.
+- **Regression evaluation:** the appendix trains a severity output but does not establish its reported severity MAE through a complete held-out evaluation.
+- **Preprocessing:** appendix RGB inputs are scaled by `/255`; the portfolio model embeds official `keras.applications.resnet.preprocess_input`. This is a methodological difference.
+- **Metric naming:** a comparison plot labels accuracy as balanced accuracy; these metrics are not generally interchangeable.
 
-## Portfolio pipeline runtime and execution
+Historical figures remain report-derived and are distinct from portfolio runs.
 
-The cleaned runtime targets Python 3.10 with TensorFlow 2.15.x and NumPy below 2.0. The lightweight development environment used Python 3.10.11; TensorFlow is not installed there, so TensorFlow model construction and actual image execution have not been runtime-verified in that environment. Standard CI intentionally does not install TensorFlow or request ImageNet weights. Install compatible runtime requirements before an experiment.
+## FloPWD portfolio control
 
-The portfolio pipeline resizes RGB images to 224 x 224 and embeds `keras.applications.resnet.preprocess_input` in the model. The historical appendix scales RGB values by `/255`; do not compare runs as if preprocessing were identical. The severity head is sigmoid-scaled to 0-100 percentage points. Targets are not rescaled, and eight positive/zero-severity labels are kept as supplied.
+The local runtime targets Python 3.10, TensorFlow 2.15.x, and NumPy below 2.0. The ResNet50 preprocessing layer is embedded in the saved model, consumes resized RGB values in [0,255], and applies official Keras ResNet preprocessing. Severity is sigmoid-scaled to 0–100 percentage points. The seed-42 FloPWD split is a deterministic stratified 70/15/15 filename manifest; it is not the dissertation split. The completed baseline/control artifacts are in ignored `runs/flopwd_original_seed42` and summarized in [`results.md`](results.md).
 
-The committed filename manifest is used exactly; loading validates that manifest filenames correspond to local FloPWD records. Only training data is shuffled. Random seeds are set through Keras and the tf.data shuffle; deterministic TensorFlow ops are requested by default. Exact bit-for-bit repeatability can still depend on TensorFlow version, hardware, and backend implementation. A debug `--max-train-samples` run is marked as a subset and is not a full benchmark.
+The FloPWD loader checks CSV schema, duplicate/missing labels, file correspondence, masks, and severity range. Training shuffles only training examples. Validation and test remain deterministic and test evaluation is performed separately. The eight positive-label/zero-severity rows are retained exactly as supplied.
 
-Evaluation is test-only and reports classification metrics plus severity errors for all test images and positive test images. The positive-only severity MAE is conditional on the binary label and has its own sample count; it does not replace the all-image regression result. Neither evaluation nor prediction uses UGV in this phase.
+Exact bit-for-bit repeatability can depend on TensorFlow version, hardware, and backend kernels even when seeds and deterministic operations are requested. Runtime versions, split and model hashes, and experiment configuration should be retained with every run.
 
-## Portfolio data audit
+## UGV local export and grouped split
 
-The locally available FloPWD copy contains 2,002 image files, 2,002 binary CSV rows, 2,002 severity CSV rows, and 2,002 masks. Filenames match across all four sources and are unique. Binary counts are 1,482 yes and 520 no. The severity column is in percentage points from 0.00 to 81.91 and the source describes it as mask-derived. Eight yes-labelled images have a zero severity value; neither target is silently changed. The deterministic loader validates exact required CSV columns, filenames, duplicate rows, image/mask correspondence, and severity bounds.
+The complete inspected local folder is a Roboflow UGV-NBWASTE v13 export. Its README identifies the [v13 Roboflow dataset export](https://universe.roboflow.com/ugv-nbwaste/ugv-nbwaste/dataset/13). It contains 2,160/720/720 images in train/valid/test, 3,600 total, each with a non-empty OBB text file. The count and nominal 60/20/20 ratio match the paper's report, but filename-derived groups cross partitions in this export. The YAML has IDs 0–7 and all eight are observed. There are 4,095 annotation rows; 536 rows have at least one finite coordinate outside [0,1], retained by the parser without clipping. The paper describes 3,600 original images and eight waste categories ([paper](https://doi.org/10.1016/j.dib.2025.111559); [dataset DOI](https://doi.org/10.17632/fv28xxn4f3.3)).
 
-The local UGV export contains train/validation/test image counts 4,824/603/603 (6,030 total), the same count of annotation files, 7,563 OBB rows, and 13/2/3 empty annotations. OBB text uses a class ID followed by eight corner coordinates. IDs 0–6 are observed. Among the OBB rows, 125 have a coordinate outside [0, 1]; all values are finite and are retained without clipping. The local folder has no `data.yaml` or dataset README; names are therefore unmapped. The loader fails clearly when class metadata is required. The paper names eight classes; the public Roboflow project currently lists nine, further reason not to infer this export's mapping.
+A separate local directory contains model/metadata files but no image splits; its seven-ID mapping is not applied to the v13 export. Earlier project notes described a 6,030-image copy, but that image export is not present among the currently inspected directories, and its relationship to the complete v13 export cannot be established. For the v13 YAML, class IDs map locally to bottle, cocksheet, hardplastic, mask, medicine, packet, polythene, and sandal. This mapping is based on the actual local export metadata rather than guessed from category ordering in prose.
 
-The official paper describes 3,600 images split 60/20/20. The local 6,030-image 80/10/10 export has Roboflow-style `.rf.<hash>` filenames. Removing this suffix yields 980 apparent source IDs that occur across multiple splits. The public Roboflow project history lists an earlier 6,030-image version as well as later 3,600-image versions. This makes an earlier Roboflow export a plausible explanation for the local counts, but the missing local YAML/README prevents confirmation of the exact version, preprocessing, or augmentation history. Cross-split variants create potential leakage; do not treat the local UGV split as an independent benchmark.
+The current export's filenames yield 3,549 canonical source-ID groups. Removing only a terminal case-insensitive `.rf.<hex hash>` suffix identifies 25 groups present in multiple original partitions: 15 train+validation, 5 train+test, 4 validation+test, and 1 across all three. The machine-readable evidence is `experiments/splits/ugv_leakage_report.json`. This is a filename-based proxy; it neither proves that matching IDs are pixel-identical nor detects duplicate imagery with different stems.
 
-## Portfolio split and evaluation protocol
+The grouped seed-42 manifest at `experiments/splits/ugv_grouped_seed42.json` assigns each group to one 70/15/15 partition: train 2,484 groups/2,522 images; validation 533/542; test 532/536. It is not the paper's split. Source images are not renamed or modified.
 
-Create a deterministic 70/15/15 FloPWD train/validation/test split stratified by the binary label and controlled by a recorded seed. Save a filename-only manifest under `experiments/splits/`; no images or targets are written to it. The committed/local seed-42 manifest is a portfolio split, not the dissertation split. Because scene/group identifiers are unavailable, this random split may still place related neighboring images across partitions; assess grouping/near-duplicates before interpreting test metrics.
+## Multi-domain protocol (planned; no combined training yet)
 
-Fit and balance using training records only. Use validation for model selection and thresholds, then evaluate once on the untouched FloPWD test manifest. Report classification metrics with sample counts. Evaluate severity MAE in percentage points on the corresponding held-out records and state the sample count. Report the eight target inconsistencies. Evaluate UGV separately and only after recovering its local class-name metadata and defining which categories satisfy the image-level target. UGV-only data cannot yield plastic-versus-clean-water specificity, and empty annotation files are not presumed to be clean-water examples. Geography, perspective, background, and acquisition differ between FloPWD and UGV, so any valid UGV result is an OOD analysis with those domain differences reported.
+FloPWD supplies classification and mask-derived coverage regression. UGV records supply classification evidence only when a non-empty annotation verifies an annotated waste object. With an optional included-class filter, only images with at least one included class are eligible. Empty/nonmatching UGV annotations are unavailable labels, not clean negatives. The UGV target is “annotated waste present”; category names do not justify relabeling every example as plastic. UGV severity remains unavailable because OBB geometry is not the same target as image-area plastic coverage.
 
-Reproduced model results remain pending. The inspection CLI reads metadata and annotation text only; it does not decode or modify image data.
+The training representation stores per-task values and availability flags. Masked binary cross-entropy and masked severity MAE contribute only for records with the relevant target. Domain sampling balances source domains independently of class balancing; class balancing, if enabled, is restricted to FloPWD training samples. Validation and test sets remain separate by domain. Never report a combined-domain metric without accompanying per-domain metrics.
+
+UGV's eligible test set is positive-only under the current broad annotated-waste target, so report positive recall and score distribution only. Specificity, balanced accuracy, and binary accuracy require negative ground truth and must not be calculated from UGV alone. The difference between FloPWD positive recall and UGV positive recall is a descriptive domain gap with distinct target semantics, not necessarily an accuracy degradation.
+
+## Dataset-free validation
+
+Unit tests use synthetic CSV/YAML/annotation fixtures and do not access source dataset images. CI does not install TensorFlow, download weights, or require a GPU. Full multi-domain training remains pending; configurations are experiment definitions and not performance claims.

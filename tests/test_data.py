@@ -3,7 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from floating_plastic.data import inspect_flopwd, inspect_ugv, load_flopwd, load_ugv, parse_obb_annotation
+from floating_plastic.data import (
+    HeterogeneousRecord, canonical_ugv_source_id, heterogeneous_ugv_record,
+    inspect_flopwd, inspect_ugv, load_flopwd, load_ugv, parse_obb_annotation,
+)
 
 
 def make_flopwd(root, binary_rows=None, severity_rows=None, image_names=None):
@@ -97,6 +100,9 @@ def test_ugv_reads_yaml_obb_and_empty_annotations(tmp_path):
     assert audit.class_names == {0: "ClassA", 1: "ClassB"}
     assert len(load_ugv(root)) == 2
     assert audit.records[0].class_ids == (1,)
+    assert audit.records[0].annotation_count == 1
+    assert audit.records[0].source_dataset == "ugv"
+    assert audit.records[0].canonical_source_id == "object"
     assert audit.records[1].empty_annotation
     assert parse_obb_annotation(root / "train/labels/object.txt", audit.class_names) == (1,)
 
@@ -112,3 +118,28 @@ def test_ugv_requires_metadata_and_rejects_invalid_obb(tmp_path):
     label.write_text("0 0.1 0.2\n")
     with pytest.raises(ValueError, match="8 OBB coordinates"):
         parse_obb_annotation(label)
+
+
+def test_canonical_ugv_source_ids_strip_only_roboflow_hash_suffix():
+    assert canonical_ugv_source_id("Scene_01.rf.0123456789abcdef.jpg") == "scene_01"
+    assert canonical_ugv_source_id("Scene_01.rf.short.jpg") == "scene_01.rf.short"
+
+
+def test_ugv_empty_and_filtered_annotations_are_unavailable_not_negative(tmp_path):
+    from floating_plastic.data import UGVRecord
+    empty = UGVRecord("valid", "empty.jpg", tmp_path / "empty.jpg", tmp_path / "empty.txt", (), True)
+    mapped_out = UGVRecord("valid", "other.jpg", tmp_path / "other.jpg", tmp_path / "other.txt", (2,), False)
+    waste = UGVRecord("valid", "waste.jpg", tmp_path / "waste.jpg", tmp_path / "waste.txt", (2, 4), False)
+    for record in (empty, mapped_out):
+        sample = heterogeneous_ugv_record(record, included_class_ids={4})
+        assert sample.classification_target is None
+        assert not sample.classification_target_available
+        assert sample.severity_target is None and not sample.severity_target_available
+    eligible = heterogeneous_ugv_record(waste, included_class_ids={4})
+    assert (eligible.classification_target, eligible.classification_target_available) == (1, True)
+    assert eligible.source_domain == "ugv"
+
+
+def test_heterogeneous_record_validates_task_availability(tmp_path):
+    with pytest.raises(ValueError, match="availability flag disagree"):
+        HeterogeneousRecord("x.jpg", tmp_path / "x.jpg", None, True, None, False, "ugv")
