@@ -102,9 +102,9 @@ def make_heterogeneous_tf_dataset(records, batch_size, image_size=(224, 224),
             return image, labels, domain
         return image, labels
 
-    dataset = dataset.map(load, num_parallel_calls=tf.data.AUTOTUNE, deterministic=True)
     if training:
         dataset = dataset.shuffle(len(ordered), seed=int(seed), reshuffle_each_iteration=True)
+    dataset = dataset.map(load, num_parallel_calls=tf.data.AUTOTUNE, deterministic=True)
     return dataset.batch(int(batch_size), drop_remainder=False).prefetch(tf.data.AUTOTUNE)
 
 
@@ -152,14 +152,14 @@ def make_multidomain_tf_dataset(records_by_domain, batch_size, image_size=(224, 
         options = tf.data.Options()
         options.experimental_deterministic = True
         raw = raw.with_options(options)
+        raw = raw.shuffle(len(ordered), seed=int(seed) + domain_index,
+                          reshuffle_each_iteration=True).repeat()
         def load(path, targets, domain_label):
             image = decode_resize_rgb(path, image_size)
             return (image, targets, domain_label) if include_domain_id else (image, targets)
 
         raw = raw.map(load,
                       num_parallel_calls=tf.data.AUTOTUNE, deterministic=True)
-        raw = raw.shuffle(len(ordered), seed=int(seed) + domain_index,
-                          reshuffle_each_iteration=True).repeat()
         datasets.append(raw)
     mixed = tf.data.Dataset.sample_from_datasets(
         datasets, weights=[weights[name] for name in domain_names], seed=int(seed), stop_on_empty_dataset=False

@@ -120,6 +120,7 @@ def positive_only_metrics(probabilities, threshold=0.5):
         raise ValueError("probabilities must be a non-empty sequence in [0, 1]")
     predictions = threshold_predictions(values, threshold)
     ordered = sorted(values)
+    mean = sum(ordered) / len(ordered)
 
     def quantile(fraction):
         position = (len(ordered) - 1) * fraction
@@ -134,7 +135,9 @@ def positive_only_metrics(probabilities, threshold=0.5):
         "threshold": float(threshold),
         "predicted_probability_distribution": {
             "min": ordered[0], "q25": quantile(0.25), "median": quantile(0.5),
-            "mean": sum(ordered) / len(ordered), "q75": quantile(0.75), "max": ordered[-1],
+            "mean": mean,
+            "standard_deviation": math.sqrt(sum((value - mean) ** 2 for value in ordered) / len(ordered)),
+            "q75": quantile(0.75), "max": ordered[-1],
         },
     }
 
