@@ -4,6 +4,7 @@ import argparse
 from collections import Counter
 from datetime import datetime, timezone
 import hashlib
+import importlib.metadata
 import json
 from pathlib import Path
 import platform
@@ -199,7 +200,7 @@ def main(argv=None):
                          "dropout_rates": model_config["dropout_rates"],
                          "heads": ["binary classification", "bounded image-area severity"]},
         "preprocessing": "keras.applications.resnet.preprocess_input embedded in model",
-        "tensorflow_version": tf.__version__, "keras_version": tf.keras.__version__,
+        "tensorflow_version": tf.__version__, "keras_version": importlib.metadata.version("keras"),
         "numpy_version": np.__version__, "python_version": platform.python_version(),
         "split_manifests": {
             "flopwd": {"filename": flo_manifest_path.name, "sha256": _sha(flo_manifest_path)},
