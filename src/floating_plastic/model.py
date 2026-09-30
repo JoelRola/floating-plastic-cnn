@@ -1,6 +1,46 @@
 """TensorFlow model factory for the bounded two-head ResNet50 model."""
 
 
+_PREPROCESS_LAYER = None
+
+
+def _resnet_preprocess_layer(tf):
+    """Return a registered layer that applies Keras' official ResNet transform.
+
+    Wrapping the application function in one serializable layer avoids Keras
+    2.15 serializing its internal TensorFlow ops as a non-portable Lambda graph.
+    """
+    global _PREPROCESS_LAYER
+    if _PREPROCESS_LAYER is None:
+        class ResNet50Preprocess(tf.keras.layers.Layer):
+            def call(self, inputs):
+                return tf.keras.applications.resnet.preprocess_input(inputs)
+
+            def get_config(self):
+                return super().get_config()
+
+        ResNet50Preprocess.__name__ = "ResNet50Preprocess"
+        ResNet50Preprocess.__qualname__ = "ResNet50Preprocess"
+        ResNet50Preprocess.__module__ = __name__
+        _PREPROCESS_LAYER = tf.keras.utils.register_keras_serializable(
+            package="floating_plastic"
+        )(ResNet50Preprocess)
+    return _PREPROCESS_LAYER
+
+
+def custom_objects():
+    """Register and return custom layers required to reload saved models."""
+    try:
+        import tensorflow as tf
+    except ImportError as exc:
+        raise RuntimeError("TensorFlow is required to load the model") from exc
+    layer = _resnet_preprocess_layer(tf)
+    return {
+        "ResNet50Preprocess": layer,
+        "floating_plastic>ResNet50Preprocess": layer,
+    }
+
+
 def create_model(
     input_shape=(224, 224, 3),
     weights="imagenet",
@@ -31,7 +71,7 @@ def create_model(
         raise ValueError("dropout rates must be in [0, 1)")
 
     inputs = tf.keras.Input(shape=input_shape, dtype=tf.float32, name="rgb_image_0_255")
-    preprocessed = tf.keras.applications.resnet.preprocess_input(inputs)
+    preprocessed = _resnet_preprocess_layer(tf)(name="resnet50_preprocess")(inputs)
     backbone = tf.keras.applications.ResNet50(
         weights=weights, include_top=False, input_shape=input_shape
     )

@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from floating_plastic.config import load_config
 from floating_plastic.data import load_flopwd
 from floating_plastic.metrics import classification_metrics, severity_regression_metrics, threshold_predictions
+from floating_plastic.model import custom_objects
 from floating_plastic.pipeline import make_tf_dataset
 from floating_plastic.splits import load_split_manifest, records_for_split
 
@@ -91,7 +92,9 @@ def main(argv=None):
         test_records, batch_size, tuple(config["data"]["image_size"]), training=False,
         seed=int(config["training"]["seed"]),
     )
-    model = tf.keras.models.load_model(args.model, compile=False)
+    model = tf.keras.models.load_model(
+        args.model, compile=False, custom_objects=custom_objects()
+    )
     outputs = model.predict(dataset, verbose=0)
     if not isinstance(outputs, dict) or not {"classification", "severity"}.issubset(outputs):
         raise ValueError("model must return named 'classification' and 'severity' outputs")

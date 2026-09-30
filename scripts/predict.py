@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from floating_plastic.config import load_config
 from floating_plastic.metrics import threshold_predictions
+from floating_plastic.model import custom_objects
 from floating_plastic.pipeline import decode_resize_rgb
 
 
@@ -37,7 +38,9 @@ def main(argv=None):
         raise SystemExit("TensorFlow is required for prediction; install compatible runtime packages from requirements.txt") from exc
 
     image = decode_resize_rgb(str(args.image), tuple(config["data"]["image_size"]))
-    model = tf.keras.models.load_model(args.model, compile=False)
+    model = tf.keras.models.load_model(
+        args.model, compile=False, custom_objects=custom_objects()
+    )
     outputs = model(tf.convert_to_tensor(image[None, ...]), training=False)
     probability = float(np.asarray(outputs["classification"]).reshape(-1)[0])
     severity = float(np.asarray(outputs["severity"]).reshape(-1)[0])

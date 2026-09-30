@@ -21,6 +21,9 @@ def decode_resize_rgb(image_path, image_size=(224, 224)):
     image = tf.io.decode_image(encoded, channels=3, expand_animations=False)
     image.set_shape((None, None, 3))
     image = tf.image.resize(image, image_size, antialias=True)
+    # Antialiased interpolation can overshoot the source pixel range by a few
+    # floating-point ULPs; keep the documented ResNet input contract explicit.
+    image = tf.clip_by_value(image, 0.0, 255.0)
     return tf.cast(image, tf.float32)
 
 
