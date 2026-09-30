@@ -59,15 +59,19 @@ def make_tensorflow_masked_loss(task="mae"):
         raise RuntimeError("TensorFlow is required to construct a Keras masked loss") from exc
 
     class MaskedTaskLoss(tf.keras.losses.Loss):
-        def __init__(self, reduction=tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE,
-                     name=f"masked_{task}"):
+        def __init__(self, task=task, reduction=tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE,
+                     name=None):
+            if task not in {"mae", "binary_crossentropy"}:
+                raise ValueError("unsupported serialized masked loss task")
+            self.task = task
+            name = name or f"masked_{task}"
             super().__init__(reduction=reduction, name=name)
 
         def call(self, y_true, y_pred):
             values = tf.cast(y_true[..., 0:1], y_pred.dtype)
             mask = tf.cast(y_true[..., 1:2], y_pred.dtype)
             safe_values = tf.where(mask > 0, values, tf.zeros_like(values))
-            if task == "mae":
+            if self.task == "mae":
                 per_item = tf.abs(safe_values - y_pred)
             else:
                 per_item = tf.keras.backend.binary_crossentropy(safe_values, y_pred)
@@ -75,7 +79,7 @@ def make_tensorflow_masked_loss(task="mae"):
             return tf.reduce_sum(weighted) / tf.maximum(tf.reduce_sum(mask), 1.0)
 
         def get_config(self):
-            return {**super().get_config(), "task": task}
+            return {**super().get_config(), "task": self.task}
 
     MaskedTaskLoss.__name__ = f"Masked{task.title().replace('_', '')}Loss"
     MaskedTaskLoss.__qualname__ = MaskedTaskLoss.__name__

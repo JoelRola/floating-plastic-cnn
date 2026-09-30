@@ -136,8 +136,6 @@ def positive_only_metrics(probabilities, threshold=0.5):
             "min": ordered[0], "q25": quantile(0.25), "median": quantile(0.5),
             "mean": sum(ordered) / len(ordered), "q75": quantile(0.75), "max": ordered[-1],
         },
-        "specificity": None,
-        "accuracy": None,
     }
 
 
@@ -157,11 +155,12 @@ def multidomain_evaluation(flopwd_true, flopwd_probabilities, flopwd_severity_tr
     return {
         "flopwd": flo,
         "ugv_annotated_waste_present": ugv,
-        "cross_domain_positive_recall_gap": {
+        "domain_recall_gap": {
+            "name": "domain recall gap",
             "absolute_difference": abs(flo_positive_recall - ugv["positive_recall"]),
             "interpretation": (
                 "descriptive difference between FloPWD plastic-positive recall and UGV annotated-waste "
-                "recall; targets and domains differ, so this is not accuracy degradation"
+                "recall; targets and domains differ, so this is not accuracy loss"
             ),
         },
     }

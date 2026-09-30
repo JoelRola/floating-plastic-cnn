@@ -36,6 +36,34 @@ def test_tensorflow_masked_loss_ignores_unavailable_values():
     assert float(loss(no_severity, tf.constant([[0.0], [100.0]]))) == 0.0
 
 
+def test_compiled_masked_model_serializes_and_reloads(tmp_path):
+    if importlib.util.find_spec("tensorflow") is None:
+        pytest.skip("TensorFlow is not installed in lightweight CI")
+    import tensorflow as tf
+    from floating_plastic.model import custom_objects
+
+    inputs = tf.keras.Input(shape=(2,))
+    outputs = {
+        "classification": tf.keras.layers.Dense(1, activation="sigmoid", name="classification")(inputs),
+        "severity": tf.keras.layers.Dense(1, activation="sigmoid", name="severity")(inputs),
+    }
+    model = tf.keras.Model(inputs, outputs)
+    model.compile(
+        optimizer="adam",
+        loss={"classification": make_tensorflow_masked_loss("binary_crossentropy"),
+              "severity": make_tensorflow_masked_loss("mae")},
+    )
+    x = tf.ones((2, 2))
+    y = {"classification": tf.constant([[1.0, 1.0], [1.0, 1.0]]),
+         "severity": tf.constant([[float("nan"), 0.0], [50.0, 1.0]])}
+    model.train_on_batch(x, y)
+    path = tmp_path / "masked_model.keras"
+    model.save(path)
+    loaded = tf.keras.models.load_model(path, custom_objects=custom_objects())
+    assert set(loaded.output_names) == {"classification", "severity"}
+    assert len(loaded.loss) == 2
+
+
 def test_domain_sampling_is_balanced_independently_of_dataset_size():
     assert domain_sampling_weights({"flopwd": 1402, "ugv": 2484}, "balanced") == {
         "flopwd": 0.5, "ugv": 0.5
@@ -50,8 +78,9 @@ def test_positive_only_evaluation_omits_unsupported_negative_metrics():
     report = positive_only_metrics([0.1, 0.7, 0.9], threshold=0.5)
     assert report["sample_count"] == 3
     assert report["positive_recall"] == pytest.approx(2 / 3)
-    assert report["specificity"] is None
-    assert report["accuracy"] is None
+    assert "specificity" not in report
+    assert "accuracy" not in report
+    assert "balanced_accuracy" not in report
 
 
 def test_multidomain_evaluation_keeps_domain_metrics_separate():
@@ -60,4 +89,5 @@ def test_multidomain_evaluation_keeps_domain_metrics_separate():
     )
     assert report["flopwd"]["classification"]["specificity"] == 1.0
     assert report["ugv_annotated_waste_present"]["positive_recall"] == 0.5
-    assert "accuracy degradation" in report["cross_domain_positive_recall_gap"]["interpretation"]
+    assert "domain recall gap" == report["domain_recall_gap"]["name"]
+    assert "not accuracy loss" in report["domain_recall_gap"]["interpretation"]

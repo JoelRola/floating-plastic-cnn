@@ -35,9 +35,18 @@ def custom_objects():
     except ImportError as exc:
         raise RuntimeError("TensorFlow is required to load the model") from exc
     layer = _resnet_preprocess_layer(tf)
+    from .losses import make_tensorflow_masked_loss
+    classification_loss = make_tensorflow_masked_loss("binary_crossentropy")
+    severity_loss = make_tensorflow_masked_loss("mae")
+    classification_loss_type = type(classification_loss)
+    severity_loss_type = type(severity_loss)
     return {
         "ResNet50Preprocess": layer,
         "floating_plastic>ResNet50Preprocess": layer,
+        classification_loss_type.__name__: classification_loss_type,
+        f"floating_plastic>{classification_loss_type.__name__}": classification_loss_type,
+        severity_loss_type.__name__: severity_loss_type,
+        f"floating_plastic>{severity_loss_type.__name__}": severity_loss_type,
     }
 
 
