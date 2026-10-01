@@ -111,8 +111,13 @@ def main(argv=None):
     parser.add_argument("--spec", type=Path, default=Path("experiments/specs/multidomain_matrix_seed42.yaml"))
     parser.add_argument("--config", type=Path, default=Path("configs/default.yaml"))
     parser.add_argument("--output-dir", type=Path, default=Path("runs/multidomain_seed42"))
+    parser.add_argument("--resume", action="store_true",
+                        help="resume an interrupted run from its last epoch checkpoint")
     args = parser.parse_args(argv)
-    if args.output_dir.exists() and any(args.output_dir.iterdir()):
+    if args.resume:
+        if not args.output_dir.is_dir() or not (args.output_dir / "metadata.json").is_file():
+            raise SystemExit(f"Cannot resume without run metadata: {args.output_dir}")
+    elif args.output_dir.exists() and any(args.output_dir.iterdir()):
         raise SystemExit(f"Output directory must be absent or empty: {args.output_dir}")
 
     import tensorflow as tf
@@ -155,7 +160,23 @@ def main(argv=None):
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     model_config = config["model"]
-    model = create_model(input_shape=(*config["data"]["image_size"], 3), weights="imagenet",
+    previous_metadata = json.loads((args.output_dir / "metadata.json").read_text(encoding="utf-8")) if args.resume else None
+    previous_history = json.loads((args.output_dir / "history.json").read_text(encoding="utf-8")) if args.resume else None
+    completed_before = int(previous_metadata["completed_epochs"]) if args.resume else 0
+    if args.resume:
+        if previous_metadata.get("benchmark_status") != "training":
+            raise ValueError("only an interrupted training run can be resumed")
+        if previous_metadata.get("frozen_spec") != {"filename": args.spec.name, "sha256": _sha(args.spec)}:
+            raise ValueError("run frozen specification differs from the requested specification")
+        if previous_metadata.get("completed_epochs") != len(previous_history.get("epoch", [])):
+            raise ValueError("metadata/history epoch counts disagree; refusing to resume")
+        if not 0 < completed_before < epochs:
+            raise ValueError(f"resume requires 0 < completed_epochs < {epochs}, got {completed_before}")
+
+    # Weights are restored from the full checkpoint, so avoid another ImageNet
+    # cache/network dependency when resuming. The checkpoint also stores Adam slots.
+    model = create_model(input_shape=(*config["data"]["image_size"], 3),
+                         weights=None if args.resume else "imagenet",
                          backbone_trainable=False, dense_units=model_config["dense_units"],
                          dropout_rates=model_config["dropout_rates"])
     class_loss = make_tensorflow_masked_loss("binary_crossentropy")
@@ -168,6 +189,15 @@ def main(argv=None):
         loss={"classification": class_loss, "severity": severity_loss},
         loss_weights={"classification": class_weight, "severity": severity_weight},
     )
+    if args.resume:
+        # Create optimizer slots before loading; Keras 2.15 otherwise defers
+        # slot restoration and the iteration counter can silently reset.
+        model.optimizer.build(model.trainable_variables)
+        model.load_weights(args.output_dir / "checkpoint.weights.h5")
+        expected_iteration = completed_before * steps_per_epoch
+        actual_iteration = int(model.optimizer.iterations.numpy())
+        if actual_iteration != expected_iteration:
+            raise ValueError(f"checkpoint optimizer iteration {actual_iteration} != expected {expected_iteration}")
     train_data, computed_steps = make_multidomain_tf_dataset(
         {"flopwd": flo_train, "ugv": ugv_train}, int(shared["batch_size"]),
         tuple(config["data"]["image_size"]), training=True, seed=int(shared["seed"]),
@@ -182,7 +212,7 @@ def main(argv=None):
                                                tuple(config["data"]["image_size"]))
 
     commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
-    metadata = {
+    metadata = previous_metadata if args.resume else {
         "created_at_utc": datetime.now(timezone.utc).isoformat(), "benchmark_status": "training",
         "experiment_type": "multidomain", "balance_ratio": "original",
         "git_commit_sha": commit, "seed": int(shared["seed"]), "epochs": epochs,
@@ -218,17 +248,28 @@ def main(argv=None):
         "positive_zero_severity_count": sum(r.binary_label == 1 and r.severity_percent == 0 for r in flo_records),
         "source_absolute_paths_saved": False, "completed_epochs": 0,
     }
+    if args.resume:
+        resume_commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+        metadata["resumed_at_utc"] = datetime.now(timezone.utc).isoformat()
+        metadata["resume_git_commit_sha"] = resume_commit
+        metadata["resume_from_epoch"] = completed_before
+        metadata["resume_optimizer_iteration"] = int(model.optimizer.iterations.numpy())
+        metadata["input_stream_replayed_batches"] = completed_before * steps_per_epoch
+        metadata["checkpoint_restored_optimizer_state"] = True
     _write(args.output_dir / "config.json", {"experiment_profile": "multidomain", "frozen_spec": args.spec.as_posix(),
                                                 "protocol": shared, "domain_sampling": metadata["domain_sampling"],
                                                 "class_balancing": "none"})
     _write(args.output_dir / "metadata.json", metadata)
-    history = {"epoch": [], "train": [], "validation_flopwd": [], "validation_ugv": [],
+    history = previous_history if args.resume else {"epoch": [], "train": [], "validation_flopwd": [], "validation_ugv": [],
                "examples_consumed_per_domain": []}
     _write(args.output_dir / "history.json", history)
     train_iter = iter(train_data)
-    consumed = Counter()
+    replay_batches = completed_before * steps_per_epoch
+    for _ in range(replay_batches):
+        next(train_iter)
+    consumed = Counter(previous_metadata.get("examples_consumed", {})) if args.resume else Counter()
     start = time.monotonic()
-    for epoch in range(1, epochs + 1):
+    for epoch in range(completed_before + 1, epochs + 1):
         sums = Counter()
         for _step in range(steps_per_epoch):
             images, targets, domain_ids = next(train_iter)
@@ -264,12 +305,12 @@ def main(argv=None):
         metadata["completed_epochs"] = epoch
         metadata["examples_consumed"] = dict(consumed)
         metadata["observed_domain_proportions"] = {key: value / sum(consumed.values()) for key, value in consumed.items()}
-        metadata["elapsed_seconds"] = time.monotonic() - start
+        metadata["elapsed_seconds"] = float(previous_metadata.get("elapsed_seconds", 0.0) if args.resume else 0.0) + time.monotonic() - start
         _write(args.output_dir / "metadata.json", metadata)
         model.save_weights(args.output_dir / "checkpoint.weights.h5")
         print(f"Epoch {epoch}/{epochs} train={epoch_train} val_flopwd={val_flo} val_ugv={val_ugv}", flush=True)
 
-    duration = time.monotonic() - start
+    duration = float(previous_metadata.get("elapsed_seconds", 0.0) if args.resume else 0.0) + time.monotonic() - start
     if int(model.optimizer.iterations.numpy()) != total_steps:
         raise AssertionError(f"optimizer iteration count {int(model.optimizer.iterations.numpy())} != {total_steps}")
     if sum(consumed.values()) != total_steps * int(shared["batch_size"]):
