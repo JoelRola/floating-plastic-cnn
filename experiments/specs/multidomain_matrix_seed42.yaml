@@ -83,3 +83,70 @@ matrix:
     flopwd_class_balance: "1:1 negative:positive within FloPWD train only"
     ugv_class_balance: unavailable_positive_only_target
     status: frozen_not_started
+  D:
+    name: task_decoupled_multidomain
+    status: frozen_not_run
+    experiment_type: multidomain_task_decoupled
+    architecture_variant: task_decoupled
+    sources: [flopwd, ugv]
+    domain_sampling:
+      flopwd: 0.5
+      ugv: 0.5
+    flopwd_class_balance:
+      negative_to_positive: "1:1"
+    seed: 42
+    epochs: 15
+    steps_per_epoch: 44
+    total_optimizer_updates: 660
+    batch_size: 32
+    optimizer: adam
+    learning_rate: 0.001
+    backbone: resnet50_imagenet_frozen
+    classification_threshold: 0.5
+    classification_loss_weight: 1.0
+    severity_loss_weight: 0.5
+    preprocessing: same_as_models_b_c
+    split_manifests:
+      flopwd: experiments/splits/flopwd_seed42.json
+      ugv: experiments/splits/ugv_grouped_seed42.json
+    architecture_contract:
+      conceptual_flow: >-
+        Input -> frozen ImageNet ResNet50 -> GlobalAveragePooling2D -> two
+        independent trainable towers
+      classification_tower: >-
+        Dense with existing-compatible activation/dropout -> sigmoid classifier
+      severity_tower: >-
+        Dense with existing-compatible activation/dropout -> bounded 0-100
+        regression output
+      shared_trainable_dense_layers: false
+      shared_representation: frozen ResNet50/GAP representation
+      ugv_classification_updates_severity_tower: false
+      flopwd_updates_both_task_towers: true
+      design_only_not_implemented: true
+  E:
+    name: multidomain_2to1
+    status: frozen_not_run
+    experiment_type: multidomain_2to1
+    architecture_variant: shared_tower
+    sources: [flopwd, ugv]
+    domain_sampling:
+      flopwd: 0.5
+      ugv: 0.5
+    flopwd_class_balance:
+      negative_to_positive: "2:1"
+    seed: 42
+    epochs: 15
+    steps_per_epoch: 44
+    total_optimizer_updates: 660
+    batch_size: 32
+    optimizer: adam
+    learning_rate: 0.001
+    backbone: resnet50_imagenet_frozen
+    classification_threshold: 0.5
+    classification_loss_weight: 1.0
+    severity_loss_weight: 0.5
+    preprocessing: same_as_models_b_c
+    split_manifests:
+      flopwd: experiments/splits/flopwd_seed42.json
+      ugv: experiments/splits/ugv_grouped_seed42.json
+    only_change_from_model_c: flopwd_class_ratio_1_to_1_becomes_2_to_1_negative_to_positive
