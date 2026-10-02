@@ -1,4 +1,4 @@
-"""Train frozen-spec multi-domain Model B with matched optimizer-step budget."""
+"""Train a frozen-spec multi-domain experiment with a matched optimizer-step budget."""
 
 import argparse
 from collections import Counter
@@ -111,6 +111,10 @@ def main(argv=None):
     parser.add_argument("--spec", type=Path, default=Path("experiments/specs/multidomain_matrix_seed42.yaml"))
     parser.add_argument("--config", type=Path, default=Path("configs/default.yaml"))
     parser.add_argument("--output-dir", type=Path, default=Path("runs/multidomain_seed42"))
+    parser.add_argument("--experiment-type", choices=("multidomain", "multidomain_class_balanced"),
+                        default="multidomain")
+    parser.add_argument("--flopwd-negative-to-positive", type=int, default=None,
+                        help="balance only FloPWD training records; required for class-balanced Model C")
     parser.add_argument("--resume", action="store_true",
                         help="resume an interrupted run from its last epoch checkpoint")
     args = parser.parse_args(argv)
@@ -120,11 +124,23 @@ def main(argv=None):
     elif args.output_dir.exists() and any(args.output_dir.iterdir()):
         raise SystemExit(f"Output directory must be absent or empty: {args.output_dir}")
 
+    is_class_balanced = args.experiment_type == "multidomain_class_balanced"
+    if is_class_balanced and args.flopwd_negative_to_positive != 1:
+        raise ValueError("Model C requires frozen 1:1 negative:positive FloPWD train sampling")
+    if not is_class_balanced and args.flopwd_negative_to_positive is not None:
+        raise ValueError("FloPWD class balancing is available only for Model C")
+
     import tensorflow as tf
 
     spec = yaml.safe_load(args.spec.read_text(encoding="utf-8"))
     if spec["compute_budget_strategy"] != "matched_optimizer_steps":
         raise ValueError("expected matched_optimizer_steps in frozen spec")
+    frozen_c = spec["matrix"]["C"]
+    if (frozen_c["experiment_type"] != "multidomain_class_balanced" or
+            frozen_c["domain_sampling"] != "balanced" or
+            frozen_c["flopwd_class_balance"] != "1:1 negative:positive within FloPWD train only" or
+            frozen_c["expected_domain_probability"] != {"flopwd": 0.5, "ugv": 0.5}):
+        raise ValueError("Model C protocol does not match the frozen experiment matrix")
     config = load_config(args.config)
     _validate_config(spec, config)
     shared = spec["shared_protocol"]
@@ -168,15 +184,24 @@ def main(argv=None):
             raise ValueError("only an interrupted training run can be resumed")
         if previous_metadata.get("frozen_spec") != {"filename": args.spec.name, "sha256": _sha(args.spec)}:
             raise ValueError("run frozen specification differs from the requested specification")
+        if previous_metadata.get("experiment_type") != args.experiment_type:
+            raise ValueError("run experiment type differs from requested experiment type")
+        if previous_metadata.get("flopwd_negative_to_positive") != args.flopwd_negative_to_positive:
+            raise ValueError("run class-balance ratio differs from requested ratio")
         if previous_metadata.get("completed_epochs") != len(previous_history.get("epoch", [])):
             raise ValueError("metadata/history epoch counts disagree; refusing to resume")
         if not 0 < completed_before < epochs:
             raise ValueError(f"resume requires 0 < completed_epochs < {epochs}, got {completed_before}")
 
-    # Weights are restored from the full checkpoint, so avoid another ImageNet
-    # cache/network dependency when resuming. The checkpoint also stores Adam slots.
+    # Weights are restored from the full checkpoint when resuming. For a fresh
+    # run, use the repository's cached ImageNet file directly so Keras does not
+    # try to create its default cache under a protected user profile.
+    imagenet_weights = (Path(__file__).resolve().parents[1] / ".keras-cache" / ".keras" /
+                        "models" / "resnet50_weights_tf_dim_ordering_tf_kernels_notop.h5")
+    if not args.resume and not imagenet_weights.is_file():
+        raise FileNotFoundError("cached ImageNet ResNet50 weights are unavailable")
     model = create_model(input_shape=(*config["data"]["image_size"], 3),
-                         weights=None if args.resume else "imagenet",
+                         weights=None if args.resume else str(imagenet_weights),
                          backbone_trainable=False, dense_units=model_config["dense_units"],
                          dropout_rates=model_config["dropout_rates"])
     class_loss = make_tensorflow_masked_loss("binary_crossentropy")
@@ -201,7 +226,8 @@ def main(argv=None):
     train_data, computed_steps = make_multidomain_tf_dataset(
         {"flopwd": flo_train, "ugv": ugv_train}, int(shared["batch_size"]),
         tuple(config["data"]["image_size"]), training=True, seed=int(shared["seed"]),
-        strategy="balanced", include_domain_id=True,
+        strategy="balanced", flopwd_negative_to_positive=args.flopwd_negative_to_positive,
+        include_domain_id=True,
     )
     # Do not use the combined natural epoch length: the optimizer-step budget is
     # fixed by Control A, so each epoch intentionally samples only part of UGV.
@@ -212,16 +238,24 @@ def main(argv=None):
                                                tuple(config["data"]["image_size"]))
 
     commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    trainer_sha = _sha(Path(__file__))
+    worktree_dirty = bool(subprocess.run(
+        ["git", "status", "--porcelain"], capture_output=True, text=True, check=True
+    ).stdout.strip())
     metadata = previous_metadata if args.resume else {
         "created_at_utc": datetime.now(timezone.utc).isoformat(), "benchmark_status": "training",
-        "experiment_type": "multidomain", "balance_ratio": "original",
+        "experiment_type": args.experiment_type,
+        "balance_ratio": "1:1 negative:positive" if is_class_balanced else "original",
         "git_commit_sha": commit, "seed": int(shared["seed"]), "epochs": epochs,
+        "trainer_sha256": trainer_sha, "worktree_dirty_at_training": worktree_dirty,
         "steps_per_epoch": steps_per_epoch, "total_optimizer_steps": total_steps,
         "natural_combined_steps_per_epoch": int(natural_combined_steps),
         "compute_budget_strategy": "matched_optimizer_steps", "batch_size": int(shared["batch_size"]),
         "optimizer": "Adam", "learning_rate": learning_rate,
         "domain_sampling": {"strategy": "balanced", "probability": {"flopwd": 0.5, "ugv": 0.5}},
-        "class_balancing": "none", "classification_threshold": float(shared["classification_threshold"]),
+        "class_balancing": "FloPWD train only, 1:1 negative:positive with replacement" if is_class_balanced else "none",
+        "flopwd_negative_to_positive": args.flopwd_negative_to_positive,
+        "classification_threshold": float(shared["classification_threshold"]),
         "loss_functions": {"classification": "masked_binary_crossentropy", "severity": "masked_mae"},
         "loss_weights": {"classification": class_weight, "severity": severity_weight},
         "backbone_trainable": False,
@@ -229,6 +263,7 @@ def main(argv=None):
                          "input_shape": [224, 224, 3], "dense_units": model_config["dense_units"],
                          "dropout_rates": model_config["dropout_rates"],
                          "heads": ["binary classification", "bounded image-area severity"]},
+        "imagenet_weights_sha256": _sha(imagenet_weights),
         "preprocessing": "keras.applications.resnet.preprocess_input embedded in model",
         "tensorflow_version": tf.__version__, "keras_version": importlib.metadata.version("keras"),
         "numpy_version": np.__version__, "python_version": platform.python_version(),
@@ -252,13 +287,20 @@ def main(argv=None):
         resume_commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
         metadata["resumed_at_utc"] = datetime.now(timezone.utc).isoformat()
         metadata["resume_git_commit_sha"] = resume_commit
+        metadata["resume_trainer_sha256"] = _sha(Path(__file__))
         metadata["resume_from_epoch"] = completed_before
         metadata["resume_optimizer_iteration"] = int(model.optimizer.iterations.numpy())
         metadata["input_stream_replayed_batches"] = completed_before * steps_per_epoch
         metadata["checkpoint_restored_optimizer_state"] = True
-    _write(args.output_dir / "config.json", {"experiment_profile": "multidomain", "frozen_spec": args.spec.as_posix(),
+        metadata.setdefault("interruption_events", []).append({
+            "at_utc": datetime.now(timezone.utc).isoformat(),
+            "completed_epochs_at_interruption": completed_before,
+            "reason": "interrupted at an epoch checkpoint to correct the audit invariant: sampled class counts may fluctuate around the frozen 1:1 distribution",
+        })
+    _write(args.output_dir / "config.json", {"experiment_profile": args.experiment_type, "frozen_spec": args.spec.as_posix(),
                                                 "protocol": shared, "domain_sampling": metadata["domain_sampling"],
-                                                "class_balancing": "none"})
+                                                "class_balancing": metadata["class_balancing"],
+                                                "flopwd_negative_to_positive": args.flopwd_negative_to_positive})
     _write(args.output_dir / "metadata.json", metadata)
     history = previous_history if args.resume else {"epoch": [], "train": [], "validation_flopwd": [], "validation_ugv": [],
                "examples_consumed_per_domain": []}
@@ -268,13 +310,32 @@ def main(argv=None):
     for _ in range(replay_batches):
         next(train_iter)
     consumed = Counter(previous_metadata.get("examples_consumed", {})) if args.resume else Counter()
+    sample_consumption = Counter(previous_metadata.get("sample_consumption", {})) if args.resume else Counter()
+    consumption_history = (previous_history.get("sample_consumption_per_epoch", [])
+                          if args.resume else [])
     start = time.monotonic()
     for epoch in range(completed_before + 1, epochs + 1):
         sums = Counter()
+        epoch_consumption = Counter()
         for _step in range(steps_per_epoch):
             images, targets, domain_ids = next(train_iter)
             ids = [item.decode("utf-8") for item in domain_ids.numpy()]
             consumed.update(ids)
+            class_values = targets["classification"].numpy()
+            severity_values = targets["severity"].numpy()
+            for domain in ("flopwd", "ugv"):
+                domain_mask = np.asarray(ids) == domain
+                class_available = class_values[:, 1] > 0
+                severity_available = severity_values[:, 1] > 0
+                epoch_consumption[f"{domain}_examples"] += int(domain_mask.sum())
+                epoch_consumption[f"{domain}_classification_positive"] += int(
+                    np.sum(domain_mask & class_available & (class_values[:, 0] == 1)))
+                epoch_consumption[f"{domain}_classification_negative"] += int(
+                    np.sum(domain_mask & class_available & (class_values[:, 0] == 0)))
+                epoch_consumption[f"{domain}_severity_supervised"] += int(
+                    np.sum(domain_mask & severity_available))
+                epoch_consumption[f"{domain}_severity_unsupervised"] += int(
+                    np.sum(domain_mask & ~severity_available))
             with tf.GradientTape() as tape:
                 outputs = model(images, training=True)
                 lc = class_loss(targets["classification"], outputs["classification"])
@@ -301,10 +362,22 @@ def main(argv=None):
         history["validation_flopwd"].append(val_flo)
         history["validation_ugv"].append(val_ugv)
         history["examples_consumed_per_domain"].append(dict(consumed))
+        sample_consumption.update(epoch_consumption)
+        consumption_history.append(dict(epoch_consumption))
+        history["sample_consumption_per_epoch"] = consumption_history
         _write(args.output_dir / "history.json", history)
         metadata["completed_epochs"] = epoch
         metadata["examples_consumed"] = dict(consumed)
         metadata["observed_domain_proportions"] = {key: value / sum(consumed.values()) for key, value in consumed.items()}
+        metadata["sample_consumption"] = dict(sample_consumption)
+        metadata["observed_flopwd_positive_rate"] = (
+            sample_consumption["flopwd_classification_positive"] /
+            (sample_consumption["flopwd_classification_positive"] +
+             sample_consumption["flopwd_classification_negative"]))
+        metadata["observed_overall_positive_rate"] = (
+            (sample_consumption["flopwd_classification_positive"] +
+             sample_consumption["ugv_classification_positive"]) /
+            (sample_consumption["flopwd_examples"] + sample_consumption["ugv_examples"]))
         metadata["elapsed_seconds"] = float(previous_metadata.get("elapsed_seconds", 0.0) if args.resume else 0.0) + time.monotonic() - start
         _write(args.output_dir / "metadata.json", metadata)
         model.save_weights(args.output_dir / "checkpoint.weights.h5")
@@ -317,6 +390,13 @@ def main(argv=None):
         raise AssertionError("consumed example total differs from the fixed full-batch optimizer budget")
     if consumed.get("flopwd", 0) == 0 or consumed.get("ugv", 0) == 0:
         raise AssertionError("both domains must contribute examples")
+    if sample_consumption["ugv_severity_supervised"] != 0:
+        raise AssertionError("UGV must not contribute severity labels")
+    if sample_consumption["flopwd_severity_supervised"] != consumed.get("flopwd", 0):
+        raise AssertionError("every sampled FloPWD example must contribute a severity label")
+    if is_class_balanced and not all(sample_consumption[key] > 0 for key in (
+            "flopwd_classification_positive", "flopwd_classification_negative")):
+        raise AssertionError("both FloPWD classes must be consumed")
     model.save(args.output_dir / "model.keras")
     checkpoint = args.output_dir / "checkpoint.weights.h5"
     if checkpoint.exists():
@@ -330,7 +410,7 @@ def main(argv=None):
         "model_file": "model.keras",
     })
     _write(args.output_dir / "metadata.json", metadata)
-    print(f"Completed Model B in {duration:.1f}s; consumed {dict(consumed)}; saved {args.output_dir}", flush=True)
+    print(f"Completed {args.experiment_type} in {duration:.1f}s; consumed {dict(consumed)}; saved {args.output_dir}", flush=True)
     return 0
 
 
