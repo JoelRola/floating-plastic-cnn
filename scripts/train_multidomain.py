@@ -111,10 +111,10 @@ def main(argv=None):
     parser.add_argument("--spec", type=Path, default=Path("experiments/specs/multidomain_matrix_seed42.yaml"))
     parser.add_argument("--config", type=Path, default=Path("configs/default.yaml"))
     parser.add_argument("--output-dir", type=Path, default=Path("runs/multidomain_seed42"))
-    parser.add_argument("--experiment-type", choices=("multidomain", "multidomain_class_balanced"),
+    parser.add_argument("--experiment-type", choices=("multidomain", "multidomain_class_balanced", "multidomain_2to1"),
                         default="multidomain")
     parser.add_argument("--flopwd-negative-to-positive", type=int, default=None,
-                        help="balance only FloPWD training records; required for class-balanced Model C")
+                        help="balance only FloPWD training records; required for Models C/E")
     parser.add_argument("--resume", action="store_true",
                         help="resume an interrupted run from its last epoch checkpoint")
     args = parser.parse_args(argv)
@@ -124,11 +124,12 @@ def main(argv=None):
     elif args.output_dir.exists() and any(args.output_dir.iterdir()):
         raise SystemExit(f"Output directory must be absent or empty: {args.output_dir}")
 
-    is_class_balanced = args.experiment_type == "multidomain_class_balanced"
-    if is_class_balanced and args.flopwd_negative_to_positive != 1:
-        raise ValueError("Model C requires frozen 1:1 negative:positive FloPWD train sampling")
-    if not is_class_balanced and args.flopwd_negative_to_positive is not None:
-        raise ValueError("FloPWD class balancing is available only for Model C")
+    expected_balance = {"multidomain": None, "multidomain_class_balanced": 1,
+                        "multidomain_2to1": 2}[args.experiment_type]
+    if args.flopwd_negative_to_positive != expected_balance:
+        raise ValueError(f"{args.experiment_type} requires frozen FloPWD negative:positive ratio "
+                         f"{expected_balance!r}; got {args.flopwd_negative_to_positive!r}")
+    is_class_balanced = expected_balance is not None
 
     import tensorflow as tf
 
@@ -141,6 +142,28 @@ def main(argv=None):
             frozen_c["flopwd_class_balance"] != "1:1 negative:positive within FloPWD train only" or
             frozen_c["expected_domain_probability"] != {"flopwd": 0.5, "ugv": 0.5}):
         raise ValueError("Model C protocol does not match the frozen experiment matrix")
+    frozen_e = spec["matrix"]["E"]
+    if (frozen_e["name"] != "multidomain_2to1" or
+            frozen_e["status"] != "frozen_not_run" or
+            frozen_e["experiment_type"] != args.experiment_type or
+            frozen_e["architecture_variant"] != "shared_tower" or
+            frozen_e["domain_sampling"] != {"flopwd": 0.5, "ugv": 0.5} or
+            frozen_e["flopwd_class_balance"]["negative_to_positive"] != "2:1" or
+            frozen_e["optimizer"] != "adam" or
+            int(frozen_e["seed"]) != int(spec["shared_protocol"]["seed"]) or
+            int(frozen_e["epochs"]) != int(spec["shared_protocol"]["training_budget"]["epochs"]) or
+            int(frozen_e["steps_per_epoch"]) != int(spec["shared_protocol"]["training_budget"]["steps_per_epoch"]) or
+            int(frozen_e["total_optimizer_updates"]) != int(spec["shared_protocol"]["training_budget"]["total_optimizer_steps"]) or
+            int(frozen_e["batch_size"]) != int(spec["shared_protocol"]["batch_size"]) or
+            float(frozen_e["learning_rate"]) != float(spec["shared_protocol"]["learning_rate"]) or
+            float(frozen_e["classification_threshold"]) != float(spec["shared_protocol"]["classification_threshold"]) or
+            float(frozen_e["classification_loss_weight"]) != float(spec["shared_protocol"]["loss_weights"]["classification"]) or
+            float(frozen_e["severity_loss_weight"]) != float(spec["shared_protocol"]["loss_weights"]["severity"]) or
+            frozen_e["backbone"] != "resnet50_imagenet_frozen" or
+            frozen_e["preprocessing"] != "same_as_models_b_c" or
+            frozen_e["split_manifests"] != {"flopwd": spec["shared_protocol"]["split_manifests"]["flopwd"],
+                                            "ugv": spec["shared_protocol"]["split_manifests"]["ugv"]}):
+        raise ValueError("Model E protocol does not match the frozen experiment matrix")
     config = load_config(args.config)
     _validate_config(spec, config)
     shared = spec["shared_protocol"]
@@ -245,15 +268,26 @@ def main(argv=None):
     metadata = previous_metadata if args.resume else {
         "created_at_utc": datetime.now(timezone.utc).isoformat(), "benchmark_status": "training",
         "experiment_type": args.experiment_type,
-        "balance_ratio": "1:1 negative:positive" if is_class_balanced else "original",
+        "balance_ratio": ({1: "1:1 negative:positive", 2: "2:1 negative:positive"}.get(expected_balance)
+                          if is_class_balanced else "original"),
+        "architecture_variant": "shared_tower",
         "git_commit_sha": commit, "seed": int(shared["seed"]), "epochs": epochs,
+        "experiment_matrix_sha256": _sha(args.spec),
+        "matrix_sha256": _sha(args.spec),
         "trainer_sha256": trainer_sha, "worktree_dirty_at_training": worktree_dirty,
         "steps_per_epoch": steps_per_epoch, "total_optimizer_steps": total_steps,
         "natural_combined_steps_per_epoch": int(natural_combined_steps),
         "compute_budget_strategy": "matched_optimizer_steps", "batch_size": int(shared["batch_size"]),
         "optimizer": "Adam", "learning_rate": learning_rate,
         "domain_sampling": {"strategy": "balanced", "probability": {"flopwd": 0.5, "ugv": 0.5}},
-        "class_balancing": "FloPWD train only, 1:1 negative:positive with replacement" if is_class_balanced else "none",
+        "class_balancing": (f"FloPWD train only, {expected_balance}:1 negative:positive with replacement"
+                            if is_class_balanced else "none"),
+        "flopwd_class_balance": (f"{expected_balance}:1 negative:positive" if is_class_balanced else "original"),
+        "expected_class_prior": {"flopwd_positive_rate": (1.0 / (expected_balance + 1)
+                                                               if is_class_balanced else None),
+                                  "overall_positive_rate": (0.5 * (1.0 / (expected_balance + 1)) + 0.5
+                                                            if is_class_balanced else None),
+                                  "severity_supervision_fraction": 0.5},
         "flopwd_negative_to_positive": args.flopwd_negative_to_positive,
         "classification_threshold": float(shared["classification_threshold"]),
         "loss_functions": {"classification": "masked_binary_crossentropy", "severity": "masked_mae"},
@@ -374,9 +408,15 @@ def main(argv=None):
             sample_consumption["flopwd_classification_positive"] /
             (sample_consumption["flopwd_classification_positive"] +
              sample_consumption["flopwd_classification_negative"]))
+        metadata["observed_flopwd_negative_to_positive_ratio"] = (
+            sample_consumption["flopwd_classification_negative"] /
+            sample_consumption["flopwd_classification_positive"])
         metadata["observed_overall_positive_rate"] = (
             (sample_consumption["flopwd_classification_positive"] +
              sample_consumption["ugv_classification_positive"]) /
+            (sample_consumption["flopwd_examples"] + sample_consumption["ugv_examples"]))
+        metadata["observed_severity_supervision_fraction"] = (
+            (sample_consumption["flopwd_severity_supervised"] + sample_consumption["ugv_severity_supervised"]) /
             (sample_consumption["flopwd_examples"] + sample_consumption["ugv_examples"]))
         metadata["elapsed_seconds"] = float(previous_metadata.get("elapsed_seconds", 0.0) if args.resume else 0.0) + time.monotonic() - start
         _write(args.output_dir / "metadata.json", metadata)
@@ -407,6 +447,27 @@ def main(argv=None):
         "observed_domain_proportions": {key: value / sum(consumed.values()) for key, value in consumed.items()},
         "optimizer_steps_completed": epochs * steps_per_epoch,
         "ugv_severity_available_examples": 0,
+        "overall_classification_positive_samples": (
+            sample_consumption["flopwd_classification_positive"] +
+            sample_consumption["ugv_classification_positive"]),
+        "overall_classification_negative_samples": sample_consumption["flopwd_classification_negative"],
+        "severity_supervised_examples": sample_consumption["flopwd_severity_supervised"],
+        "severity_unsupervised_examples": sample_consumption["flopwd_severity_unsupervised"] +
+                                          sample_consumption["ugv_severity_unsupervised"],
+        "observed_flopwd_negative_to_positive_ratio": (
+            sample_consumption["flopwd_classification_negative"] /
+            sample_consumption["flopwd_classification_positive"]),
+        "observed_flopwd_positive_rate": (
+            sample_consumption["flopwd_classification_positive"] /
+            (sample_consumption["flopwd_classification_positive"] +
+             sample_consumption["flopwd_classification_negative"])),
+        "observed_overall_positive_rate": (
+            (sample_consumption["flopwd_classification_positive"] +
+             sample_consumption["ugv_classification_positive"]) /
+            (sample_consumption["flopwd_examples"] + sample_consumption["ugv_examples"])),
+        "observed_severity_supervision_fraction": (
+            (sample_consumption["flopwd_severity_supervised"] + sample_consumption["ugv_severity_supervised"]) /
+            (sample_consumption["flopwd_examples"] + sample_consumption["ugv_examples"])),
         "model_file": "model.keras",
     })
     _write(args.output_dir / "metadata.json", metadata)
