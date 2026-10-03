@@ -23,10 +23,28 @@ def masked_multitask_train_step(model, optimizer, images, targets,
         raise FloatingPointError("non-finite total loss or no trainable gradients")
     if any(not bool(tf.reduce_all(tf.math.is_finite(gradient)).numpy()) for gradient, _ in pairs):
         raise FloatingPointError("non-finite gradient")
+    classification_tower_gradients = [
+        gradient for gradient, variable in pairs
+        if "classification_tower" in variable.name or "/classification/" in variable.name
+    ]
+    severity_tower_gradients = [
+        gradient for gradient, variable in pairs
+        if "severity_tower" in variable.name or "/severity_fraction/" in variable.name
+    ]
+    classification_tower_norm = (float(tf.linalg.global_norm(classification_tower_gradients).numpy())
+                                 if classification_tower_gradients else 0.0)
+    severity_tower_norm = (float(tf.linalg.global_norm(severity_tower_gradients).numpy())
+                           if severity_tower_gradients else 0.0)
     optimizer.apply_gradients(pairs)
     return {
         "classification_loss": float(class_value.numpy()),
         "severity_loss": float(severity_value.numpy()),
         "total_loss": float(total.numpy()),
         "gradient_variable_count": len(pairs),
+        "classification_tower_gradient_norm": classification_tower_norm,
+        "classification_tower_nonzero_gradient_variables": sum(
+            bool(tf.reduce_any(gradient != 0).numpy()) for gradient in classification_tower_gradients),
+        "severity_tower_gradient_norm": severity_tower_norm,
+        "severity_tower_nonzero_gradient_variables": sum(
+            bool(tf.reduce_any(gradient != 0).numpy()) for gradient in severity_tower_gradients),
     }

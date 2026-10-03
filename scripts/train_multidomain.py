@@ -23,7 +23,8 @@ from floating_plastic.data import (
 )
 from floating_plastic.group_splits import load_ugv_grouped_split_manifest, records_for_ugv_split
 from floating_plastic.losses import make_tensorflow_masked_loss
-from floating_plastic.metrics import positive_only_metrics, threshold_predictions
+from floating_plastic.balancing import balance_indices
+from floating_plastic.metrics import classification_metrics, positive_only_metrics, threshold_predictions
 from floating_plastic.model import create_model
 from floating_plastic.pipeline import make_heterogeneous_tf_dataset, make_multidomain_tf_dataset
 from floating_plastic.splits import load_split_manifest, records_for_split
@@ -88,10 +89,23 @@ def _evaluate_domain(model, dataset, domain, classification_loss, severity_loss,
             severity_pred.extend(outputs["severity"].numpy().reshape(-1)[s_mask.numpy()].tolist())
     report = {"sample_count": len(class_true), "classification_loss": weighted_class_loss / class_count}
     if domain == "flopwd":
-        report["classification_accuracy"] = float(
-            np.mean(np.asarray(threshold_predictions(probabilities, threshold)) == class_true))
+        class_metrics = classification_metrics(class_true, threshold_predictions(probabilities, threshold))
+        report["classification_accuracy"] = class_metrics["accuracy"]
+        report["classification_sensitivity"] = class_metrics["sensitivity"]
+        report["classification_specificity"] = class_metrics["specificity"]
         report["severity_available_count"] = severity_count
         report["severity_mae_percentage_points"] = weighted_severity_loss / severity_count
+        severity_array = np.asarray(severity_pred, dtype=float)
+        report["severity_prediction_distribution"] = {
+            "mean": float(severity_array.mean()), "median": float(np.median(severity_array)),
+            "standard_deviation": float(severity_array.std()), "min": float(severity_array.min()),
+            "max": float(severity_array.max()),
+        }
+        severity_layer = model.get_layer("severity_fraction")
+        report["severity_output_layer"] = {
+            "bias": float(severity_layer.bias.numpy().reshape(-1)[0]),
+            "kernel_l2_norm": float(np.linalg.norm(severity_layer.kernel.numpy())),
+        }
     else:
         if not class_true or any(value != 1 for value in class_true):
             raise ValueError("UGV validation target must be positive-only annotated-waste records")
@@ -204,6 +218,26 @@ def main(argv=None):
     if any(not record.classification_target_available for record in ugv_train + ugv_validation):
         raise ValueError("unexpected unavailable label in the complete non-empty UGV export")
 
+    original_severity = np.asarray([record.severity_target for record in flo_train], dtype=float)
+    balanced_indices = balance_indices(
+        [record.classification_target for record in flo_train], 1, int(shared["seed"]))
+    balanced_severity = np.asarray([flo_train[int(index)].severity_target for index in balanced_indices], dtype=float)
+
+    def severity_target_distribution(values):
+        return {
+            "sample_count": int(len(values)), "mean": float(values.mean()),
+            "median": float(np.median(values)), "standard_deviation": float(values.std()),
+            "minimum": float(values.min()), "maximum": float(values.max()),
+            "exact_zero_count": int(np.sum(values == 0)),
+            "exact_zero_percentage": float(100 * np.mean(values == 0)),
+            "p25": float(np.percentile(values, 25)), "p75": float(np.percentile(values, 75)),
+            "p90": float(np.percentile(values, 90)),
+        }
+    severity_target_context = {
+        "flopwd_original_train_distribution": severity_target_distribution(original_severity),
+        "flopwd_seed42_1to1_balanced_sampler_cycle": severity_target_distribution(balanced_severity),
+    }
+
     args.output_dir.mkdir(parents=True, exist_ok=True)
     model_config = config["model"]
     previous_metadata = json.loads((args.output_dir / "metadata.json").read_text(encoding="utf-8")) if args.resume else None
@@ -237,6 +271,23 @@ def main(argv=None):
                          backbone_trainable=False, dense_units=model_config["dense_units"],
                          dropout_rates=model_config["dropout_rates"],
                          architecture_variant=architecture_variant)
+    if architecture_variant == "task_decoupled":
+        classification_tower = [model.get_layer("classification_tower_dense_1"),
+                                model.get_layer("classification_tower_dense_2"),
+                                model.get_layer("classification")]
+        severity_tower = [model.get_layer("severity_tower_dense_1"),
+                          model.get_layer("severity_tower_dense_2"),
+                          model.get_layer("severity_fraction")]
+        classification_refs = {id(variable) for layer in classification_tower
+                               for variable in layer.trainable_variables}
+        severity_refs = {id(variable) for layer in severity_tower
+                         for variable in layer.trainable_variables}
+        backbone = model.get_layer("resnet50")
+        backbone_refs = {id(variable) for variable in backbone.weights}
+        model_trainable_refs = {id(variable) for variable in model.trainable_variables}
+        if (not classification_refs or not severity_refs or classification_refs & severity_refs or
+                backbone.trainable or backbone_refs & model_trainable_refs):
+            raise AssertionError("Model D tower trainability / frozen-backbone contract failed")
     class_loss = make_tensorflow_masked_loss("binary_crossentropy")
     severity_loss = make_tensorflow_masked_loss("mae")
     class_weight = float(shared["loss_weights"]["classification"])
@@ -308,6 +359,12 @@ def main(argv=None):
                          "dropout_rates": model_config["dropout_rates"],
                          "architecture_variant": architecture_variant,
                          "heads": ["binary classification", "bounded image-area severity"]},
+        "parameter_counts": {
+            "total": int(model.count_params()),
+            "trainable": int(sum(np.prod(variable.shape) for variable in model.trainable_variables)),
+            "non_trainable": int(sum(np.prod(variable.shape) for variable in model.non_trainable_variables)),
+        },
+        "severity_target_distribution_context": severity_target_context,
         "imagenet_weights_sha256": _sha(imagenet_weights),
         "preprocessing": "keras.applications.resnet.preprocess_input embedded in model",
         "tensorflow_version": tf.__version__, "keras_version": importlib.metadata.version("keras"),
@@ -362,6 +419,7 @@ def main(argv=None):
     start = time.monotonic()
     for epoch in range(completed_before + 1, epochs + 1):
         sums = Counter()
+        gradient_participation = Counter()
         epoch_consumption = Counter()
         for _step in range(steps_per_epoch):
             images, targets, domain_ids = next(train_iter)
@@ -388,7 +446,14 @@ def main(argv=None):
             sums["classification_loss"] += step_values["classification_loss"]
             sums["severity_loss"] += step_values["severity_loss"]
             sums["total_loss"] += step_values["total_loss"]
+            sums["classification_tower_gradient_norm"] += step_values["classification_tower_gradient_norm"]
+            sums["severity_tower_gradient_norm"] += step_values["severity_tower_gradient_norm"]
+            gradient_participation["classification_tower_nonzero_steps"] += int(
+                step_values["classification_tower_nonzero_gradient_variables"] > 0)
+            gradient_participation["severity_tower_nonzero_steps"] += int(
+                step_values["severity_tower_nonzero_gradient_variables"] > 0)
         epoch_train = {key: value / steps_per_epoch for key, value in sums.items()}
+        epoch_train.update({key: int(value) for key, value in gradient_participation.items()})
         val_flo = _evaluate_domain(model, flo_val_ds, "flopwd", class_loss, severity_loss,
                                    float(shared["classification_threshold"]))
         val_ugv = _evaluate_domain(model, ugv_val_ds, "ugv", class_loss, severity_loss,

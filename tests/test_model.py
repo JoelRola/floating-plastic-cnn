@@ -69,6 +69,10 @@ def test_task_decoupled_towers_isolate_ugv_classification_gradients(tmp_path):
                                          class_loss, severity_loss, 1.0, 0.5)
     assert np.isfinite(losses["classification_loss"])
     assert losses["severity_loss"] == 0.0
+    assert losses["classification_tower_gradient_norm"] > 0
+    assert losses["classification_tower_nonzero_gradient_variables"] > 0
+    assert losses["severity_tower_gradient_norm"] == 0.0
+    assert losses["severity_tower_nonzero_gradient_variables"] == 0
     class_after = [w for layer in class_layers for w in layer.get_weights()]
     severity_after = [w for layer in severity_layers for w in layer.get_weights()]
     assert any(not np.array_equal(before, after) for before, after in zip(class_before, class_after))
@@ -81,6 +85,8 @@ def test_task_decoupled_towers_isolate_ugv_classification_gradients(tmp_path):
     flo_losses = masked_multitask_train_step(model, optimizer, images, flopwd_targets,
                                             class_loss, severity_loss, 1.0, 0.5)
     assert np.isfinite(flo_losses["severity_loss"])
+    assert flo_losses["severity_tower_gradient_norm"] > 0
+    assert flo_losses["severity_tower_nonzero_gradient_variables"] > 0
     severity_after = [w for layer in severity_layers for w in layer.get_weights()]
     assert any(not np.array_equal(before, after) for before, after in zip(severity_before, severity_after))
     assert all(np.array_equal(before, after) for before, after in zip(backbone_before, backbone.get_weights()))
