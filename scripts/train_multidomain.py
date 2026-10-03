@@ -27,6 +27,7 @@ from floating_plastic.metrics import positive_only_metrics, threshold_prediction
 from floating_plastic.model import create_model
 from floating_plastic.pipeline import make_heterogeneous_tf_dataset, make_multidomain_tf_dataset
 from floating_plastic.splits import load_split_manifest, records_for_split
+from floating_plastic.training import masked_multitask_train_step
 
 
 def _write(path, value):
@@ -111,10 +112,11 @@ def main(argv=None):
     parser.add_argument("--spec", type=Path, default=Path("experiments/specs/multidomain_matrix_seed42.yaml"))
     parser.add_argument("--config", type=Path, default=Path("configs/default.yaml"))
     parser.add_argument("--output-dir", type=Path, default=Path("runs/multidomain_seed42"))
-    parser.add_argument("--experiment-type", choices=("multidomain", "multidomain_class_balanced", "multidomain_2to1"),
+    parser.add_argument("--experiment-type", choices=("multidomain", "multidomain_class_balanced",
+                                                        "multidomain_2to1", "multidomain_task_decoupled"),
                         default="multidomain")
     parser.add_argument("--flopwd-negative-to-positive", type=int, default=None,
-                        help="balance only FloPWD training records; required for Models C/E")
+                        help="balance only FloPWD training records; required for Models C/D/E")
     parser.add_argument("--resume", action="store_true",
                         help="resume an interrupted run from its last epoch checkpoint")
     args = parser.parse_args(argv)
@@ -125,7 +127,9 @@ def main(argv=None):
         raise SystemExit(f"Output directory must be absent or empty: {args.output_dir}")
 
     expected_balance = {"multidomain": None, "multidomain_class_balanced": 1,
-                        "multidomain_2to1": 2}[args.experiment_type]
+                        "multidomain_2to1": 2, "multidomain_task_decoupled": 1}[args.experiment_type]
+    architecture_variant = ("task_decoupled" if args.experiment_type == "multidomain_task_decoupled"
+                            else "shared_tower")
     if args.flopwd_negative_to_positive != expected_balance:
         raise ValueError(f"{args.experiment_type} requires frozen FloPWD negative:positive ratio "
                          f"{expected_balance!r}; got {args.flopwd_negative_to_positive!r}")
@@ -142,28 +146,31 @@ def main(argv=None):
             frozen_c["flopwd_class_balance"] != "1:1 negative:positive within FloPWD train only" or
             frozen_c["expected_domain_probability"] != {"flopwd": 0.5, "ugv": 0.5}):
         raise ValueError("Model C protocol does not match the frozen experiment matrix")
-    frozen_e = spec["matrix"]["E"]
-    if (frozen_e["name"] != "multidomain_2to1" or
-            frozen_e["status"] != "frozen_not_run" or
-            frozen_e["experiment_type"] != args.experiment_type or
-            frozen_e["architecture_variant"] != "shared_tower" or
-            frozen_e["domain_sampling"] != {"flopwd": 0.5, "ugv": 0.5} or
-            frozen_e["flopwd_class_balance"]["negative_to_positive"] != "2:1" or
-            frozen_e["optimizer"] != "adam" or
-            int(frozen_e["seed"]) != int(spec["shared_protocol"]["seed"]) or
-            int(frozen_e["epochs"]) != int(spec["shared_protocol"]["training_budget"]["epochs"]) or
-            int(frozen_e["steps_per_epoch"]) != int(spec["shared_protocol"]["training_budget"]["steps_per_epoch"]) or
-            int(frozen_e["total_optimizer_updates"]) != int(spec["shared_protocol"]["training_budget"]["total_optimizer_steps"]) or
-            int(frozen_e["batch_size"]) != int(spec["shared_protocol"]["batch_size"]) or
-            float(frozen_e["learning_rate"]) != float(spec["shared_protocol"]["learning_rate"]) or
-            float(frozen_e["classification_threshold"]) != float(spec["shared_protocol"]["classification_threshold"]) or
-            float(frozen_e["classification_loss_weight"]) != float(spec["shared_protocol"]["loss_weights"]["classification"]) or
-            float(frozen_e["severity_loss_weight"]) != float(spec["shared_protocol"]["loss_weights"]["severity"]) or
-            frozen_e["backbone"] != "resnet50_imagenet_frozen" or
-            frozen_e["preprocessing"] != "same_as_models_b_c" or
-            frozen_e["split_manifests"] != {"flopwd": spec["shared_protocol"]["split_manifests"]["flopwd"],
-                                            "ugv": spec["shared_protocol"]["split_manifests"]["ugv"]}):
-        raise ValueError("Model E protocol does not match the frozen experiment matrix")
+    if args.experiment_type in {"multidomain_2to1", "multidomain_task_decoupled"}:
+        matrix_key = "E" if args.experiment_type == "multidomain_2to1" else "D"
+        frozen = spec["matrix"][matrix_key]
+        expected_name = "multidomain_2to1" if matrix_key == "E" else "task_decoupled_multidomain"
+        expected_ratio = "2:1" if matrix_key == "E" else "1:1"
+        if (frozen["name"] != expected_name or frozen["status"] != "frozen_not_run" or
+                frozen["experiment_type"] != args.experiment_type or
+                frozen["architecture_variant"] != architecture_variant or
+                frozen["domain_sampling"] != {"flopwd": 0.5, "ugv": 0.5} or
+                frozen["flopwd_class_balance"]["negative_to_positive"] != expected_ratio or
+                frozen["optimizer"] != "adam" or
+                int(frozen["seed"]) != int(spec["shared_protocol"]["seed"]) or
+                int(frozen["epochs"]) != int(spec["shared_protocol"]["training_budget"]["epochs"]) or
+                int(frozen["steps_per_epoch"]) != int(spec["shared_protocol"]["training_budget"]["steps_per_epoch"]) or
+                int(frozen["total_optimizer_updates"]) != int(spec["shared_protocol"]["training_budget"]["total_optimizer_steps"]) or
+                int(frozen["batch_size"]) != int(spec["shared_protocol"]["batch_size"]) or
+                float(frozen["learning_rate"]) != float(spec["shared_protocol"]["learning_rate"]) or
+                float(frozen["classification_threshold"]) != float(spec["shared_protocol"]["classification_threshold"]) or
+                float(frozen["classification_loss_weight"]) != float(spec["shared_protocol"]["loss_weights"]["classification"]) or
+                float(frozen["severity_loss_weight"]) != float(spec["shared_protocol"]["loss_weights"]["severity"]) or
+                frozen["backbone"] != "resnet50_imagenet_frozen" or
+                frozen["preprocessing"] != "same_as_models_b_c" or
+                frozen["split_manifests"] != {"flopwd": spec["shared_protocol"]["split_manifests"]["flopwd"],
+                                              "ugv": spec["shared_protocol"]["split_manifests"]["ugv"]}):
+            raise ValueError(f"Model {matrix_key} protocol does not match the frozen experiment matrix")
     config = load_config(args.config)
     _validate_config(spec, config)
     shared = spec["shared_protocol"]
@@ -209,6 +216,8 @@ def main(argv=None):
             raise ValueError("run frozen specification differs from the requested specification")
         if previous_metadata.get("experiment_type") != args.experiment_type:
             raise ValueError("run experiment type differs from requested experiment type")
+        if previous_metadata.get("architecture_variant", architecture_variant) != architecture_variant:
+            raise ValueError("run architecture variant differs from requested experiment type")
         if previous_metadata.get("flopwd_negative_to_positive") != args.flopwd_negative_to_positive:
             raise ValueError("run class-balance ratio differs from requested ratio")
         if previous_metadata.get("completed_epochs") != len(previous_history.get("epoch", [])):
@@ -226,7 +235,8 @@ def main(argv=None):
     model = create_model(input_shape=(*config["data"]["image_size"], 3),
                          weights=None if args.resume else str(imagenet_weights),
                          backbone_trainable=False, dense_units=model_config["dense_units"],
-                         dropout_rates=model_config["dropout_rates"])
+                         dropout_rates=model_config["dropout_rates"],
+                         architecture_variant=architecture_variant)
     class_loss = make_tensorflow_masked_loss("binary_crossentropy")
     severity_loss = make_tensorflow_masked_loss("mae")
     class_weight = float(shared["loss_weights"]["classification"])
@@ -270,7 +280,7 @@ def main(argv=None):
         "experiment_type": args.experiment_type,
         "balance_ratio": ({1: "1:1 negative:positive", 2: "2:1 negative:positive"}.get(expected_balance)
                           if is_class_balanced else "original"),
-        "architecture_variant": "shared_tower",
+        "architecture_variant": architecture_variant,
         "git_commit_sha": commit, "seed": int(shared["seed"]), "epochs": epochs,
         "experiment_matrix_sha256": _sha(args.spec),
         "matrix_sha256": _sha(args.spec),
@@ -296,6 +306,7 @@ def main(argv=None):
         "architecture": {"backbone": "ResNet50", "weights": "imagenet", "include_top": False,
                          "input_shape": [224, 224, 3], "dense_units": model_config["dense_units"],
                          "dropout_rates": model_config["dropout_rates"],
+                         "architecture_variant": architecture_variant,
                          "heads": ["binary classification", "bounded image-area severity"]},
         "imagenet_weights_sha256": _sha(imagenet_weights),
         "preprocessing": "keras.applications.resnet.preprocess_input embedded in model",
@@ -332,6 +343,7 @@ def main(argv=None):
             "reason": "interrupted at an epoch checkpoint to correct the audit invariant: sampled class counts may fluctuate around the frozen 1:1 distribution",
         })
     _write(args.output_dir / "config.json", {"experiment_profile": args.experiment_type, "frozen_spec": args.spec.as_posix(),
+                                                "architecture_variant": architecture_variant,
                                                 "protocol": shared, "domain_sampling": metadata["domain_sampling"],
                                                 "class_balancing": metadata["class_balancing"],
                                                 "flopwd_negative_to_positive": args.flopwd_negative_to_positive})
@@ -370,22 +382,12 @@ def main(argv=None):
                     np.sum(domain_mask & severity_available))
                 epoch_consumption[f"{domain}_severity_unsupervised"] += int(
                     np.sum(domain_mask & ~severity_available))
-            with tf.GradientTape() as tape:
-                outputs = model(images, training=True)
-                lc = class_loss(targets["classification"], outputs["classification"])
-                ls = severity_loss(targets["severity"], outputs["severity"])
-                total = class_weight * lc + severity_weight * ls
-            gradients = tape.gradient(total, model.trainable_variables)
-            pairs = [(gradient, variable) for gradient, variable in zip(gradients, model.trainable_variables)
-                     if gradient is not None]
-            if not pairs or not bool(tf.math.is_finite(total).numpy()):
-                raise FloatingPointError(f"invalid loss/gradient at epoch={epoch}")
-            if any(not bool(tf.reduce_all(tf.math.is_finite(gradient)).numpy()) for gradient, _ in pairs):
-                raise FloatingPointError(f"non-finite gradient at epoch={epoch}")
-            model.optimizer.apply_gradients(pairs)
-            sums["classification_loss"] += float(lc.numpy())
-            sums["severity_loss"] += float(ls.numpy())
-            sums["total_loss"] += float(total.numpy())
+            step_values = masked_multitask_train_step(
+                model, model.optimizer, images, targets, class_loss, severity_loss,
+                class_weight, severity_weight)
+            sums["classification_loss"] += step_values["classification_loss"]
+            sums["severity_loss"] += step_values["severity_loss"]
+            sums["total_loss"] += step_values["total_loss"]
         epoch_train = {key: value / steps_per_epoch for key, value in sums.items()}
         val_flo = _evaluate_domain(model, flo_val_ds, "flopwd", class_loss, severity_loss,
                                    float(shared["classification_threshold"]))

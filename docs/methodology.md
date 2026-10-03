@@ -6,7 +6,7 @@ The original appendix implementation is retained under `legacy/`. It combines tr
 
 ## Portfolio research question
 
-Does adding visually diverse ground-level UGV imagery improve cross-domain plastic/waste detection while preserving aerial FloPWD classification and severity-estimation performance? The completed FloPWD-only run is the control. Combined profiles are design-only and have not been trained.
+Does adding visually diverse ground-level UGV imagery improve cross-domain plastic/waste detection while preserving aerial FloPWD classification and severity-estimation performance? The completed FloPWD-only run is the control. The frozen A/B/C/E multi-domain runs vary source composition and FloPWD class prior; D isolates the trainable task representations.
 
 Rather than forcing heterogeneous datasets into a single label format, the reproduction uses partial supervision: FloPWD provides classification and coverage regression labels, while UGV contributes cross-domain classification evidence where supported.
 
@@ -26,17 +26,21 @@ Roboflow-style `.rf.<hex hash>` suffixes are removed from filename stems to cons
 
 ## Heterogeneous model training design
 
-The existing ResNet50 shared trunk retains its binary classification and 0–100 severity outputs. Dataset records carry separate target values, availability flags, and source-domain IDs. Keras loss inputs encode `[target, available]`; masked classification loss ignores samples without a supported image-level target, and masked regression loss ignores samples without genuine severity labels. Therefore UGV examples can update classification/shared features without fabricated severity targets.
+Models B/C/E use the existing ResNet50 shared tower and retain binary classification and 0–100 severity outputs. Model D shares only the frozen ResNet50/GAP representation; separate trainable classification and severity towers follow it. Dataset records carry separate target values, availability flags, and source-domain IDs. Keras loss inputs encode `[target, available]`; masked classification loss ignores samples without a supported image-level target, and masked regression loss ignores samples without genuine severity labels. UGV examples therefore contribute classification supervision only, without fabricated severity targets.
 
 Domain sampling and class balancing are separate controls. `domain_sampling.strategy: balanced` gives each active source equal example-sampling probability regardless of export size. Optional binary class balancing applies only to labeled FloPWD training records, because positive-only UGV provides no clean-water negatives. Validation and test remain separated by source domain and are reported independently.
 
-Experiment definitions in `configs/experiments.yaml` are:
+The frozen seed-42 experiment matrix in `experiments/specs/multidomain_matrix_seed42.yaml` defines:
 
-- **flopwd_only:** the completed FloPWD control, with no class rebalance.
-- **multidomain:** FloPWD plus grouped UGV training, equal domain sampling, no class rebalance.
-- **multidomain_class_balanced:** same domains and sampling, with 1:1 negative:positive sampling within FloPWD training records only.
+- **A:** FloPWD-only control with the original FloPWD class distribution.
+- **B:** FloPWD plus grouped UGV, balanced domain sampling, original FloPWD class distribution.
+- **C:** same multi-domain protocol with 1:1 negative:positive sampling within FloPWD training records.
+- **E:** same shared-tower protocol as C with 2:1 negative:positive sampling within FloPWD training records.
+- **D:** same data protocol as C, but independent trainable classification and severity towers after the frozen shared feature extractor.
 
-The latter two profiles are not trained yet. Comparisons must retain the same split manifests, model, seed, preprocessing, loss weights, epoch budget, and evaluation implementation.
+B/C/E classification results show that changing the effective class prior changes the fixed-threshold sensitivity/specificity tradeoff. Severity remained near-zero collapsed for B, C, and E, with all-image MAE about 5.47–5.48 percentage points. D tests whether trainable shared-representation interference caused the regression failure; its architecture and real-data smoke checks do not constitute benchmark results. D's frozen experiment values must remain unchanged after E results are known.
+
+Comparisons retain the same split manifests, seed, preprocessing, losses and weights, optimizer-step budget, and evaluation implementation unless the matrix explicitly names the architecture or FloPWD class-ratio ablation.
 
 ## Evaluation design
 

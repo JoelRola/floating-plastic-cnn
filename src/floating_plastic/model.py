@@ -56,6 +56,7 @@ def create_model(
     backbone_trainable=False,
     dense_units=(256, 128),
     dropout_rates=(0.3, 0.2),
+    architecture_variant="shared_tower",
 ):
     """Create a ResNet50 classifier and image-area severity regressor.
 
@@ -78,6 +79,8 @@ def create_model(
         raise ValueError("dense layer sizes must be positive")
     if any(not 0 <= float(rate) < 1 for rate in dropout_rates):
         raise ValueError("dropout rates must be in [0, 1)")
+    if architecture_variant not in {"shared_tower", "task_decoupled"}:
+        raise ValueError("architecture_variant must be 'shared_tower' or 'task_decoupled'")
 
     inputs = tf.keras.Input(shape=input_shape, dtype=tf.float32, name="rgb_image_0_255")
     preprocessed = _resnet_preprocess_layer(tf)(name="resnet50_preprocess")(inputs)
@@ -87,22 +90,46 @@ def create_model(
     backbone.trainable = bool(backbone_trainable)
     x = backbone(preprocessed, training=False)
     x = tf.keras.layers.GlobalAveragePooling2D(name="global_average_pooling")(x)
-    for index, (units, dropout) in enumerate(zip(dense_units, dropout_rates), start=1):
-        x = tf.keras.layers.Dense(int(units), activation="relu", name=f"shared_dense_{index}")(x)
-        if dropout:
-            x = tf.keras.layers.Dropout(float(dropout), name=f"shared_dropout_{index}")(x)
+    if architecture_variant == "shared_tower":
+        # Keep the historical graph and layer names exactly as saved in A/B/C/E.
+        for index, (units, dropout) in enumerate(zip(dense_units, dropout_rates), start=1):
+            x = tf.keras.layers.Dense(int(units), activation="relu", name=f"shared_dense_{index}")(x)
+            if dropout:
+                x = tf.keras.layers.Dropout(float(dropout), name=f"shared_dropout_{index}")(x)
+        classification = tf.keras.layers.Dense(
+            1, activation="sigmoid", name="classification"
+        )(x)
+        severity_fraction = tf.keras.layers.Dense(
+            1, activation="sigmoid", name="severity_fraction"
+        )(x)
+        model_name = "floating_plastic_resnet50_multitask"
+    else:
+        def make_tower(prefix):
+            value = x
+            for index, (units, dropout) in enumerate(zip(dense_units, dropout_rates), start=1):
+                value = tf.keras.layers.Dense(
+                    int(units), activation="relu", name=f"{prefix}_dense_{index}"
+                )(value)
+                if dropout:
+                    value = tf.keras.layers.Dropout(
+                        float(dropout), name=f"{prefix}_dropout_{index}"
+                    )(value)
+            return value
 
-    classification = tf.keras.layers.Dense(
-        1, activation="sigmoid", name="classification"
-    )(x)
-    severity_fraction = tf.keras.layers.Dense(
-        1, activation="sigmoid", name="severity_fraction"
-    )(x)
+        classification_features = make_tower("classification_tower")
+        severity_features = make_tower("severity_tower")
+        classification = tf.keras.layers.Dense(
+            1, activation="sigmoid", name="classification"
+        )(classification_features)
+        severity_fraction = tf.keras.layers.Dense(
+            1, activation="sigmoid", name="severity_fraction"
+        )(severity_features)
+        model_name = "floating_plastic_resnet50_multitask_task_decoupled"
     severity = tf.keras.layers.Rescaling(100.0, name="severity_percentage_points")(
         severity_fraction
     )
     return tf.keras.Model(
         inputs=inputs,
         outputs={"classification": classification, "severity": severity},
-        name="floating_plastic_resnet50_multitask",
+        name=model_name,
     )

@@ -33,11 +33,15 @@ The current export's filenames yield 3,549 canonical source-ID groups. Removing 
 
 The grouped seed-42 manifest at `experiments/splits/ugv_grouped_seed42.json` assigns each group to one 70/15/15 partition: train 2,484 groups/2,522 images; validation 533/542; test 532/536. It is not the paper's split. Source images are not renamed or modified.
 
-## Multi-domain protocol (planned; no combined training yet)
+## Multi-domain protocol and task-decoupled architecture
 
 FloPWD supplies classification and mask-derived coverage regression. UGV records supply classification evidence only when a non-empty annotation verifies an annotated waste object. With an optional included-class filter, only images with at least one included class are eligible. Empty/nonmatching UGV annotations are unavailable labels, not clean negatives. The UGV target is “annotated waste present”; category names do not justify relabeling every example as plastic. UGV severity remains unavailable because OBB geometry is not the same target as image-area plastic coverage.
 
 The training representation stores per-task values and availability flags. Masked binary cross-entropy and masked severity MAE contribute only for records with the relevant target. Domain sampling balances source domains independently of class balancing; class balancing, if enabled, is restricted to FloPWD training samples. Validation and test sets remain separate by domain. Never report a combined-domain metric without accompanying per-domain metrics.
+
+The tracked seed-42 matrix distinguishes A (FloPWD-only control), B (multi-domain with the original FloPWD prior), C (multi-domain with 1:1 FloPWD negative:positive sampling), and E (multi-domain with 2:1 FloPWD negative:positive sampling). B/C/E use the existing shared trainable tower. These completed runs show that changing the classification prior changes the fixed-threshold classification tradeoff, while their severity outputs remain near-zero collapsed (all-image MAE about 5.47–5.48 percentage points).
+
+Model D is frozen as a future task-decoupled architectural experiment. It keeps C's data, sampling, optimizer, losses, weights, and compute budget. The frozen ResNet50 and GAP feature vector are shared; independent trainable dense/dropout towers feed the sigmoid classifier and bounded severity head. Because UGV examples have no severity labels, their classification gradients must not change severity-tower weights. Only an engineering smoke run is permitted until a separate instruction authorizes the full D benchmark. The smoke run does not change the D specification and does not support performance claims.
 
 UGV's eligible test set is positive-only under the current broad annotated-waste target, so report positive recall and score distribution only. Specificity, balanced accuracy, and binary accuracy require negative ground truth and must not be calculated from UGV alone. The difference between FloPWD positive recall and UGV positive recall is a descriptive domain gap with distinct target semantics, not necessarily an accuracy degradation.
 
