@@ -65,8 +65,19 @@ def main(argv=None):
         return {"classification_probability": probability, "severity_percentage_points": severity}
 
     d_predictions = {"flopwd": predict_one(one_flo), "ugv": predict_one(one_ugv)}
-    if d_model.get_layer("resnet50").trainable:
-        raise AssertionError("reloaded D backbone is unexpectedly trainable")
+    backbone = d_model.get_layer("resnet50")
+    backbone_weight_ids = {id(variable) for variable in backbone.weights}
+    model_trainable_ids = {id(variable) for variable in d_model.trainable_variables}
+    backbone_trainable_ids = {id(variable) for variable in backbone.trainable_variables}
+    # Keras 2.15 reloads the nested Model wrapper with trainable=True even though
+    # every ResNet weight remains excluded from the parent model's trainable
+    # variables. Reassert the frozen wrapper state and validate the actual
+    # optimization boundary by variable identity.
+    if backbone_trainable_ids or backbone_weight_ids & model_trainable_ids:
+        raise AssertionError("reloaded D exposes a ResNet50 weight as trainable")
+    backbone.trainable = False
+    if backbone.trainable or backbone.trainable_variables:
+        raise AssertionError("reloaded D backbone could not be explicitly kept frozen")
     del d_model
     tf.keras.backend.clear_session()
 
