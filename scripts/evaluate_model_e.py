@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import subprocess
 import sys
 
 import numpy as np
@@ -121,14 +122,16 @@ def main():
     flo_parts = {key: records_for_split(flo_records, flo_manifest, key) for key in ("train", "validation", "test")}
     ugv_parts = {key: records_for_ugv_split(ugv_records, ugv_manifest, key) for key in ("train", "validation", "test")}
     flo_test = [heterogeneous_flopwd_record(r) for r in flo_parts["test"]]
+    ugv_test_source = ugv_parts["test"]
     ugv_test = [heterogeneous_ugv_record(r) for r in ugv_parts["test"]]
+    ugv_canonical_by_filename = {record.filename: record.canonical_source_id for record in ugv_test_source}
     if len(flo_test) != 300 or len(ugv_test) != 536:
         raise ValueError(f"unexpected test row counts: FloPWD={len(flo_test)}, UGV={len(ugv_test)}")
     if len({r.filename for r in flo_test}) != 300 or len({r.filename for r in ugv_test}) != 536:
         raise ValueError("duplicate test rows")
     if {r.filename for r in flo_test} & {r.filename for r in flo_parts["train"] + flo_parts["validation"]}:
         raise ValueError("FloPWD test rows overlap train/validation")
-    if {r.canonical_source_id for r in ugv_test} & {
+    if {r.canonical_source_id for r in ugv_test_source} & {
         r.canonical_source_id for r in ugv_parts["train"] + ugv_parts["validation"]
     }:
         raise ValueError("UGV canonical source groups overlap train/validation")
@@ -192,7 +195,7 @@ def main():
                                                      "predicted_probability", "predicted_positive"])
         writer.writeheader()
         for i, record in enumerate(ugv_test):
-            writer.writerow({"filename": record.filename, "canonical_source_id": record.canonical_source_id,
+            writer.writerow({"filename": record.filename, "canonical_source_id": ugv_canonical_by_filename[record.filename],
                              "true_annotated_waste_present": 1, "predicted_probability": float(ugv_prob[i]),
                              "predicted_positive": int(ugv_prob[i] >= threshold)})
 
@@ -270,9 +273,9 @@ def main():
             "mean_probability": float(np.mean(ugv_prob)), "median_probability": float(np.median(ugv_prob)),
             "standard_deviation": float(np.std(ugv_prob)), "minimum_probability": float(np.min(ugv_prob)),
             "maximum_probability": float(np.max(ugv_prob)),
-            "below_threshold": [{"filename": ugv_test[i].filename, "canonical_source_id": ugv_test[i].canonical_source_id,
+            "below_threshold": [{"filename": ugv_test[i].filename, "canonical_source_id": ugv_canonical_by_filename[ugv_test[i].filename],
                                  "probability": float(ugv_prob[i])} for i in ugv_below],
-            "lowest_confidence_positives": [{"filename": ugv_test[i].filename, "canonical_source_id": ugv_test[i].canonical_source_id,
+            "lowest_confidence_positives": [{"filename": ugv_test[i].filename, "canonical_source_id": ugv_canonical_by_filename[ugv_test[i].filename],
                                              "probability": float(ugv_prob[i])} for i in ugv_low],
             "severity_labels": 0,
         },
@@ -313,6 +316,10 @@ def main():
     run_metadata["model_reload_verified"] = {"fresh_process": True, "evaluation_process": "scripts/evaluate_model_e.py"}
     run_metadata["test_evaluation_provenance"] = {"pass_count_per_domain": 1, "threshold": threshold,
                                                   "final_epoch_model": True}
+    run_metadata["evaluator_sha256"] = _sha(Path(__file__))
+    run_metadata["evaluation_git_commit_sha"] = subprocess.run(
+        ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
     _write_json(args.run_dir / "metadata.json", run_metadata)
     hash_paths = {
         "model.keras": args.run_dir / "model.keras",
