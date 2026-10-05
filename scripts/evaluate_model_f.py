@@ -145,8 +145,10 @@ def make_figures(out, flo, severity, comparison, ugv):
         ax.bar(x + offset, [models[n]["classification"][metric] for n in names], width, label=label)
     ax.set(xticks=x, xticklabels=[f"Model {n}" for n in names], ylim=(0, 1), ylabel="Score",
            title="FloPWD classification: A/C/D/F")
-    ax.legend(ncol=2, loc="lower center", bbox_to_anchor=(.5, 1.01))
-    fig.tight_layout(); fig.savefig(out / "acdf_classification.png", dpi=160); plt.close(fig)
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend_.remove()
+    fig.legend(handles, labels, loc="lower center", ncol=2)
+    fig.tight_layout(rect=(0, .12, 1, 1)); fig.savefig(out / "acdf_classification.png", dpi=160); plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(7, 4)); x = np.arange(4); width = .34
     ax.bar(x-width/2, [models[n]["severity_mae_all"] for n in names], width, label="All images")
