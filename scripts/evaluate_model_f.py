@@ -146,7 +146,6 @@ def make_figures(out, flo, severity, comparison, ugv):
     ax.set(xticks=x, xticklabels=[f"Model {n}" for n in names], ylim=(0, 1), ylabel="Score",
            title="FloPWD classification: A/C/D/F")
     handles, labels = ax.get_legend_handles_labels()
-    ax.legend_.remove()
     fig.legend(handles, labels, loc="lower center", ncol=2)
     fig.tight_layout(rect=(0, .12, 1, 1)); fig.savefig(out / "acdf_classification.png", dpi=160); plt.close(fig)
 
