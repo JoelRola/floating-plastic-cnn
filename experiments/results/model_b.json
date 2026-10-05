@@ -1,0 +1,68 @@
+{
+  "architecture": "shared_tower",
+  "classification_balancing_strategy": "original FloPWD distribution; domain sampling 0.5/0.5",
+  "classification_threshold": 0.5,
+  "data_sources": [
+    "FloPWD",
+    "UGV"
+  ],
+  "domain_sampling": "balanced 0.5 FloPWD / 0.5 UGV",
+  "effective_overall_classification_positive_rate": 0.8701854493580599,
+  "epochs": 15,
+  "experiment_name": "multidomain",
+  "experiment_type": "multidomain",
+  "flopwd_classification": {
+    "accuracy": 0.9233333333333333,
+    "balanced_accuracy": 0.8816701316701316,
+    "confusion_matrix": {
+      "fn": 7,
+      "fp": 16,
+      "tn": 62,
+      "tp": 215
+    },
+    "f1": 0.9492273730684326,
+    "mean_probability": 0.7663967978336587,
+    "precision": 0.9307359307359307,
+    "sample_count": 300,
+    "sensitivity": 0.9684684684684685,
+    "specificity": 0.7948717948717948
+  },
+  "flopwd_severity": {
+    "mae_percentage_points": 5.479032649287869,
+    "positive_mae_percentage_points": 7.404098173486838,
+    "positive_rmse_percentage_points": 16.16329289544023,
+    "positive_sample_count": 222,
+    "rmse_percentage_points": 13.904190287305607,
+    "sample_count": 300
+  },
+  "model_id": "B",
+  "optimizer_update_budget": 660,
+  "provenance": {
+    "evaluation_git_sha": null,
+    "frozen_matrix_sha256_at_training": "dc687a052b60cfdbd98d97c5d76cd1911dfd6b3f0bf9c9ffc051f00c2673f11f",
+    "sha256": {
+      "floPWD_evaluation_json": "75638cbdc94ef9583f7d360806f985587aac0620ae15f3e62d5e9896ffe8bc9c",
+      "flopwd_predictions_csv": "12a0cde62202197b91e11e6d1f475aeadbf960a1c6bf635adaf984113c06659f",
+      "model_keras": "29f5a1db7d0973dcb298e9a1a8c6fc40696fd474f8aaf9dc72e9f04047271e7d",
+      "ugv_predictions_csv": "c9e6d25150575e1db56ffe039624b5c6a7448c2b01148d07eaa40ca2f462628e"
+    },
+    "split_manifest_sha256": {
+      "flopwd": "0bf57e14bce71eb3bfc25fa19e8a27bd123c6dca575cc975efc691ee7bc4bbac",
+      "ugv_grouped": "6fef0d9e888393a373f85f5a0f7b9aab7efde35371dda01c044d50c817831c00"
+    },
+    "training_git_sha": "915a85d8d6fb0fa9c4a8bad278d87a513cc3d782"
+  },
+  "seed": 42,
+  "severity_status": "collapsed_not_for_use",
+  "status": "completed",
+  "training_duration_seconds": 45563.76600000053,
+  "ugv_supported_metrics": {
+    "annotated_waste_positive_recall": 1.0,
+    "maximum_probability": 1.0,
+    "mean_probability": 0.9993554836333688,
+    "median_probability": 0.9999996423721313,
+    "minimum_probability": 0.701522171497345,
+    "probability_standard_deviation": 0.012896199474214805,
+    "sample_count": 536
+  }
+}

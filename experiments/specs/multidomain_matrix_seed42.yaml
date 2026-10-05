@@ -1,6 +1,8 @@
-# Frozen before evaluating Model B on either final test set.
-# This is an experiment plan, not a result or a claim of exact replication.
+# Final status registry for the seed-42 experiment matrix.
+# Configurations remain the values frozen before each benchmark was evaluated.
 matrix_id: heterogeneous_floating_waste_seed42_v1
+experimental_phase_status: closed_after_model_f
+experimental_phase_note: "Experimental phase closed after Model F."
 compute_budget_strategy: matched_optimizer_steps
 control_provenance:
   run: runs/flopwd_original_seed42
@@ -60,7 +62,7 @@ matrix:
     sources: [flopwd]
     domain_sampling: proportional_single_domain
     flopwd_class_balance: original
-    status: completed_control
+    status: completed
   B:
     name: multidomain
     experiment_type: multidomain
@@ -71,7 +73,7 @@ matrix:
       ugv: 0.5
     flopwd_class_balance: original
     actual_unique_source_exhaustion_per_epoch: false
-    status: frozen_to_run
+    status: completed
   C:
     name: multidomain_class_balanced
     experiment_type: multidomain_class_balanced
@@ -82,10 +84,10 @@ matrix:
       ugv: 0.5
     flopwd_class_balance: "1:1 negative:positive within FloPWD train only"
     ugv_class_balance: unavailable_positive_only_target
-    status: frozen_not_started
+    status: completed
   D:
     name: task_decoupled_multidomain
-    status: frozen_not_run
+    status: completed
     experiment_type: multidomain_task_decoupled
     architecture_variant: task_decoupled
     sources: [flopwd, ugv]
@@ -122,10 +124,10 @@ matrix:
       shared_representation: frozen ResNet50/GAP representation
       ugv_classification_updates_severity_tower: false
       flopwd_updates_both_task_towers: true
-      design_only_not_implemented: true
+      design_only_not_implemented: false
   E:
     name: multidomain_2to1
-    status: frozen_not_run
+    status: completed
     experiment_type: multidomain_2to1
     architecture_variant: shared_tower
     sources: [flopwd, ugv]
@@ -152,7 +154,7 @@ matrix:
     only_change_from_model_c: flopwd_class_ratio_1_to_1_becomes_2_to_1_negative_to_positive
   F:
     name: task_decoupled_original_severity_prior
-    status: frozen_not_run
+    status: completed
     experiment_type: multidomain_task_decoupled_severity_prior
     architecture_variant: task_decoupled
     classification_stream:

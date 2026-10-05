@@ -1,0 +1,91 @@
+{
+  "evaluation_artifact_sha256": {
+    "A": {
+      "floPWD_evaluation_json": "dbd1269b4b6554502bc85ae17587f4b25104531d987e43a2f85dc255aa5a9559",
+      "flopwd_predictions_csv": "0531691ca0071d6b80ff9bed01f70dadca3f45c5e206735ecd7fbcb048d127de",
+      "model_keras": "ac6eaf3aa1f5b5ac55a074fb4e8ab377b4612e0ca848379d24f77c16c8cd65fd",
+      "ugv_control_evaluation_json": "75638cbdc94ef9583f7d360806f985587aac0620ae15f3e62d5e9896ffe8bc9c",
+      "ugv_predictions_csv": "e0af010ec4a969a579ac104b3b0190d7dc5508cce3c1ce6d2220b1a88a940b42"
+    },
+    "B": {
+      "floPWD_evaluation_json": "75638cbdc94ef9583f7d360806f985587aac0620ae15f3e62d5e9896ffe8bc9c",
+      "flopwd_predictions_csv": "12a0cde62202197b91e11e6d1f475aeadbf960a1c6bf635adaf984113c06659f",
+      "model_keras": "29f5a1db7d0973dcb298e9a1a8c6fc40696fd474f8aaf9dc72e9f04047271e7d",
+      "ugv_predictions_csv": "c9e6d25150575e1db56ffe039624b5c6a7448c2b01148d07eaa40ca2f462628e"
+    },
+    "C": {
+      "floPWD_evaluation_json": "6b83488595a855f1c7d5d1b6250d3adc4f738bbde546cac5d4a7db0e385eb1bd",
+      "flopwd_domain_metrics_json": "def5ff28d3a581a3c439aa4698816b8e7e88835063fba4ac00b50a0471c9b342",
+      "flopwd_predictions_csv": "ce3cdd17bcb8492704381a577d032c75059e0330baf431261be5c0b4fa4dfa7f",
+      "model_keras": "6185dcad5bbcbef2be5c973f1fd9a30fc0bca674a91be881e7d82325756ea5ac",
+      "ugv_domain_metrics_json": "16f0ad0f6216614dd9e1d0d6ec5721d0d22ded77330bad7a4f3b57295a11c41b",
+      "ugv_predictions_csv": "376c97293848f49d0f44ff46a548480096102224827f9b503acd59dba0ac260f"
+    },
+    "D": {
+      "floPWD_evaluation_json": "db2827daa9a541aed328c48ad6922ba76b13bfffca145ea746267a8f179e6970",
+      "flopwd_domain_metrics_json": "4e02f20302c697419328574721a221a0d73233a3a216eed585684a4099ac0b9d",
+      "flopwd_predictions_csv": "a97b8876a6eae566a64cce56453ee2ec0bbc2873839a5606270f46ab5c8cadb2",
+      "model_keras": "72b80772cf6a2665ab9dbb0847eaacb318b5fdd74eb9e56851e513a1c95bf7ee",
+      "ugv_domain_metrics_json": "05dde73f930d839f83276342072f832fd15c73745ef828ec122943da74c8974c",
+      "ugv_predictions_csv": "2de60c420d2a6742cc8eb98109618f25cd7d570fae7c957533896cba6687dfff"
+    },
+    "E": {
+      "floPWD_evaluation_json": "9c16bdee7c9313fe5296bdd763eeeb5ce766cd68c9f69b6d553d9417a6b759da",
+      "flopwd_domain_metrics_json": "356c6e04814caa2aa8cade8cd24461e7186ebf6c389f77ba980e0838dcc040c2",
+      "flopwd_predictions_csv": "191ce35aeb0b2cd14d360bfd7756956f165b09696ef491971331707746f5d4b6",
+      "model_keras": "f0f20bf59436ad3108ec5b1354a3f0880d14ca906e857f9d7046af1405cf8cd6",
+      "ugv_domain_metrics_json": "33df85f35ea350a13a26b761046049488725ebf733fcea3377244936ef8f6f14",
+      "ugv_predictions_csv": "2eac7230f44ed160c136a1b4607d9881598a5885e4ec3f75b4269794ec3a0439"
+    },
+    "F": {
+      "floPWD_evaluation_json": "5a484a6374db746075f9a179ceeea15838b64a8e1bbd87e5add2f6ee0eba7cfb",
+      "flopwd_domain_metrics_json": "192bf3ae3d43e1fb8f5cef6370a26283e2662336e6f7c00916e5bc4ec4071c8c",
+      "flopwd_predictions_csv": "47b5398790c6b6f872c70ef14693ddb2e8c05464c7f823881008fb31ba5f1810",
+      "model_keras": "f2ec85993f6b858c797d3d353067a3e1cf527f01ff4dc366c896610dff66b1dc",
+      "ugv_domain_metrics_json": "dae030042cd62065684a0e31d0598b29017b7958152ca38615018397def61a3c",
+      "ugv_predictions_csv": "17108d6d869ed8b5fec9bf925a242967bdcf2602b2deef2a598f655d010c0c79"
+    }
+  },
+  "evaluation_git_shas": {
+    "A": null,
+    "B": null,
+    "C": null,
+    "D": "a223ec9f8f47f1fc7ea8a6dcc7b8ef2f89aa3bf4",
+    "E": "86c794608450c5435c5bf79b65e6614fca8a8cf1",
+    "F": "0759b937576818e0b89a9fe0a08311964ba28c5d"
+  },
+  "experimental_phase_note": "Experimental phase closed after Model F.",
+  "experimental_phase_status": "closed_after_model_f",
+  "final_status_matrix_sha256": "f45bf584da1b3390bbba6177d6e145d159dbd87690ec9b09c2148dbef9d34e34",
+  "frozen_matrix_sha256_at_training": {
+    "A": null,
+    "B": "dc687a052b60cfdbd98d97c5d76cd1911dfd6b3f0bf9c9ffc051f00c2673f11f",
+    "C": "dc687a052b60cfdbd98d97c5d76cd1911dfd6b3f0bf9c9ffc051f00c2673f11f",
+    "D": "4218ca91c895e5f8143b287e6eb983f8518a4177c5d4d2d033f4c1eecd35b7b9",
+    "E": "4218ca91c895e5f8143b287e6eb983f8518a4177c5d4d2d033f4c1eecd35b7b9",
+    "F": "ffb75c06dd39684ee1f5fa635ec839ba778593176edd6ddad688980175692e85"
+  },
+  "model_artifact_sha256": {
+    "A": "ac6eaf3aa1f5b5ac55a074fb4e8ab377b4612e0ca848379d24f77c16c8cd65fd",
+    "B": "29f5a1db7d0973dcb298e9a1a8c6fc40696fd474f8aaf9dc72e9f04047271e7d",
+    "C": "6185dcad5bbcbef2be5c973f1fd9a30fc0bca674a91be881e7d82325756ea5ac",
+    "D": "72b80772cf6a2665ab9dbb0847eaacb318b5fdd74eb9e56851e513a1c95bf7ee",
+    "E": "f0f20bf59436ad3108ec5b1354a3f0880d14ca906e857f9d7046af1405cf8cd6",
+    "F": "f2ec85993f6b858c797d3d353067a3e1cf527f01ff4dc366c896610dff66b1dc"
+  },
+  "note": "Raw models, prediction tables, datasets, and run folders are not included in the tracked package. Null hashes mean the corresponding model.keras was not present in the local run bundle at packaging time.",
+  "package_created_from": "persisted completed run metadata and evaluation outputs under ignored runs/",
+  "package_git_sha": "5735dab60bb1c41dbf45340ed474c1aa960aaec3",
+  "split_manifest_sha256": {
+    "flopwd": "0bf57e14bce71eb3bfc25fa19e8a27bd123c6dca575cc975efc691ee7bc4bbac",
+    "ugv_grouped": "6fef0d9e888393a373f85f5a0f7b9aab7efde35371dda01c044d50c817831c00"
+  },
+  "training_git_shas": {
+    "A": "f7549b7d28de67d7587bb417384e48ab78b414ca",
+    "B": "915a85d8d6fb0fa9c4a8bad278d87a513cc3d782",
+    "C": "5ad27b9aeaa91f0f01fe44ac6ac23a6fffe795f9",
+    "D": "ab1f20ead138add9a657ec3aa0391bd9df6c1f4c",
+    "E": "a97e4baba4b74276a6b59818a7047e07056fa533",
+    "F": "a0060005eec910e9fff3f103017293bb5abec9af"
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "architecture": "task_decoupled",
+  "classification_balancing_strategy": "1:1 negative:positive in FloPWD classification stream; domain sampling 0.5/0.5",
+  "classification_threshold": 0.5,
+  "data_sources": [
+    "FloPWD",
+    "UGV"
+  ],
+  "domain_sampling": "balanced 0.5 FloPWD / 0.5 UGV",
+  "effective_overall_classification_positive_rate": 0.7521306818181818,
+  "epochs": 15,
+  "experiment_name": "task_decoupled_multidomain",
+  "experiment_type": "multidomain_task_decoupled",
+  "flopwd_classification": {
+    "accuracy": 0.92,
+    "balanced_accuracy": 0.9168399168399168,
+    "confusion_matrix": {
+      "fn": 17,
+      "fp": 7,
+      "tn": 71,
+      "tp": 205
+    },
+    "f1": 0.944700460829493,
+    "mean_probability": 0.6940960013678819,
+    "precision": 0.9669811320754716,
+    "sample_count": 300,
+    "sensitivity": 0.9234234234234234,
+    "specificity": 0.9102564102564102
+  },
+  "flopwd_severity": {
+    "mae_percentage_points": 5.479033339109848,
+    "positive_mae_percentage_points": 7.4040991069050515,
+    "positive_rmse_percentage_points": 16.163296446897704,
+    "positive_sample_count": 222,
+    "rmse_percentage_points": 13.904193342384842,
+    "sample_count": 300
+  },
+  "model_id": "D",
+  "optimizer_update_budget": 660,
+  "provenance": {
+    "evaluation_git_sha": "a223ec9f8f47f1fc7ea8a6dcc7b8ef2f89aa3bf4",
+    "frozen_matrix_sha256_at_training": "4218ca91c895e5f8143b287e6eb983f8518a4177c5d4d2d033f4c1eecd35b7b9",
+    "sha256": {
+      "floPWD_evaluation_json": "db2827daa9a541aed328c48ad6922ba76b13bfffca145ea746267a8f179e6970",
+      "flopwd_domain_metrics_json": "4e02f20302c697419328574721a221a0d73233a3a216eed585684a4099ac0b9d",
+      "flopwd_predictions_csv": "a97b8876a6eae566a64cce56453ee2ec0bbc2873839a5606270f46ab5c8cadb2",
+      "model_keras": "72b80772cf6a2665ab9dbb0847eaacb318b5fdd74eb9e56851e513a1c95bf7ee",
+      "ugv_domain_metrics_json": "05dde73f930d839f83276342072f832fd15c73745ef828ec122943da74c8974c",
+      "ugv_predictions_csv": "2de60c420d2a6742cc8eb98109618f25cd7d570fae7c957533896cba6687dfff"
+    },
+    "split_manifest_sha256": {
+      "flopwd": "0bf57e14bce71eb3bfc25fa19e8a27bd123c6dca575cc975efc691ee7bc4bbac",
+      "ugv_grouped": "6fef0d9e888393a373f85f5a0f7b9aab7efde35371dda01c044d50c817831c00"
+    },
+    "training_git_sha": "ab1f20ead138add9a657ec3aa0391bd9df6c1f4c"
+  },
+  "seed": 42,
+  "severity_status": "collapsed_not_for_use",
+  "status": "completed",
+  "training_duration_seconds": 3349.436999999918,
+  "ugv_supported_metrics": {
+    "annotated_waste_positive_recall": 1.0,
+    "maximum_probability": 1.0,
+    "mean_probability": 0.9999312576073319,
+    "median_probability": 1.0,
+    "minimum_probability": 0.9751509428024292,
+    "probability_standard_deviation": 0.001091904966203384,
+    "sample_count": 536
+  }
+}

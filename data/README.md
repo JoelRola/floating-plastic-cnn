@@ -1,6 +1,6 @@
 # Dataset sources and local layout
 
-Datasets are not redistributed here. Download links point to the original public sources; users must follow the version-specific terms and licences. Keep downloaded data outside Git.
+Datasets are not redistributed here. FloPWD and UGV source data, local exports, and annotations remain subject to their upstream licences and terms; this repository does not grant additional redistribution rights. Download links point to the original public sources. Keep downloaded data outside Git and do not commit source images, masks, or labels.
 
 ```text
 data/

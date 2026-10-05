@@ -1,0 +1,72 @@
+{
+  "architecture": "shared_tower",
+  "classification_balancing_strategy": "original FloPWD class distribution; single-domain sampling",
+  "classification_threshold": 0.5,
+  "data_sources": [
+    "FloPWD"
+  ],
+  "domain_sampling": "FloPWD only",
+  "epochs": 15,
+  "experiment_name": "flopwd_only_control",
+  "experiment_type": "original",
+  "flopwd_classification": {
+    "accuracy": 0.96,
+    "balanced_accuracy": 0.9604989604989604,
+    "confusion_matrix": {
+      "fn": 9,
+      "fp": 3,
+      "tn": 75,
+      "tp": 213
+    },
+    "f1": 0.9726027397260274,
+    "mean_probability": 0.71164645823922,
+    "precision": 0.9861111111111112,
+    "sample_count": 300,
+    "sensitivity": 0.9594594594594594,
+    "specificity": 0.9615384615384616
+  },
+  "flopwd_severity": {
+    "mae_percentage_points": 2.169630868338546,
+    "positive_mae_percentage_points": 2.9164320419252414,
+    "positive_rmse_percentage_points": 5.321807360141092,
+    "positive_sample_count": 222,
+    "rmse_percentage_points": 4.578946040069401,
+    "sample_count": 300
+  },
+  "model_id": "A",
+  "optimizer_update_budget": 660,
+  "provenance": {
+    "evaluation_git_sha": null,
+    "frozen_matrix_sha256_at_training": null,
+    "sha256": {
+      "floPWD_evaluation_json": "dbd1269b4b6554502bc85ae17587f4b25104531d987e43a2f85dc255aa5a9559",
+      "flopwd_predictions_csv": "0531691ca0071d6b80ff9bed01f70dadca3f45c5e206735ecd7fbcb048d127de",
+      "model_keras": "ac6eaf3aa1f5b5ac55a074fb4e8ab377b4612e0ca848379d24f77c16c8cd65fd",
+      "ugv_control_evaluation_json": "75638cbdc94ef9583f7d360806f985587aac0620ae15f3e62d5e9896ffe8bc9c",
+      "ugv_predictions_csv": "e0af010ec4a969a579ac104b3b0190d7dc5508cce3c1ce6d2220b1a88a940b42"
+    },
+    "split_manifest_sha256": {
+      "flopwd": "0bf57e14bce71eb3bfc25fa19e8a27bd123c6dca575cc975efc691ee7bc4bbac",
+      "ugv_grouped": "6fef0d9e888393a373f85f5a0f7b9aab7efde35371dda01c044d50c817831c00"
+    },
+    "training_git_sha": "f7549b7d28de67d7587bb417384e48ab78b414ca"
+  },
+  "seed": 42,
+  "severity_status": "functional",
+  "status": "completed",
+  "training_duration_seconds": null,
+  "ugv_supported_metrics": {
+    "annotated_waste_positive_recall": 0.9514925373134329,
+    "evaluation_artifact_source": {
+      "workflow": "Model B comparison evaluation against Control A",
+      "metrics_json": "runs/multidomain_seed42/evaluation/metrics.json",
+      "control_prediction_csv": "runs/multidomain_seed42/evaluation/ugv_control_a_predictions.csv"
+    },
+    "maximum_probability": 0.9999719262123108,
+    "mean_probability": 0.9057421092158565,
+    "median_probability": 0.9724700748920441,
+    "minimum_probability": 0.002922821557149291,
+    "probability_standard_deviation": 0.19142268076263677,
+    "sample_count": 536
+  }
+}

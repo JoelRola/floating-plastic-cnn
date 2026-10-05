@@ -1,78 +1,137 @@
 # Floating Plastic Detection & Severity Estimation
 
-A deep-learning computer vision project for detecting floating plastic in water and estimating image-area plastic coverage, developed as my Computer Science with AI dissertation.
+This project evaluates aerial floating-plastic detection and image-area coverage estimation, then tests whether ground-level waste imagery can improve cross-domain detection. It is a deterministic rebuild and extension of a dissertation project, with separate labels, grouped splits, matched optimizer budgets, and explicit reporting of where multi-domain severity regression failed.
 
-This portfolio repository separates the supplied dissertation implementation and historical findings from a cleaned implementation and a new heterogeneous multi-domain research design. The work investigates transfer learning, partial supervision, class imbalance, specificity collapse, out-of-domain evaluation, and severity regression.
+## Why this project matters
 
-Author: **Joel Rola**
+Repeatable image-based monitoring can help environmental teams survey floating waste across lakes and waterways. This project studies what a vision model can measure from images, and how its behavior changes when it is trained across different viewpoints and label systems.
 
-## Project
+## Key reproduced results
 
-The completed portfolio control is a FloPWD-only ResNet50 experiment. Its metrics and provenance are recorded in [results](docs/results.md); generated run artifacts remain local under ignored `runs/`. The next planned comparison adds grouped UGV training data, but combined training has not been run.
+**Control A — FloPWD-only:** 96.00% accuracy, 96.05% balanced accuracy, 95.95% sensitivity, 96.15% specificity, and 2.17 percentage-point (pp) severity MAE on the frozen 300-image test split.
 
-The historical appendix scales RGB pixels by `/255`. The portfolio model instead embeds the official `keras.applications.resnet.preprocess_input` transform in the saved model graph. Severity is constrained to 0-100 percentage points using a sigmoid output scaled by 100. These choices differ from the historical implementation; the cleaned pipeline is not claimed to reproduce dissertation methodology or metrics.
+**Model C — balanced multi-domain:** 97.44% FloPWD specificity and 99.81% UGV annotated-waste positive recall. These are different target tasks: UGV has positive-only annotated-waste examples and does not provide clean-water negatives.
 
-## Dissertation results
+Multi-domain Models B through F produced near-zero or near-constant severity outputs. Task decoupling (D) and restoring the original FloPWD severity sampling distribution (F) did not resolve the collapse. This is a central diagnostic finding, not a successful severity result. The sigmoid-times-100 output's optimization dynamics remain a plausible unresolved mechanism, not a proven cause.
 
-The following are historical results reported in the dissertation materials. They have **not yet been reproduced by the refactored repository**:
+| Model | Design | FloPWD accuracy | Balanced accuracy | Sensitivity | Specificity | Precision | F1 | Severity MAE (all / positive, pp) | UGV annotated-waste positive recall |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| A | FloPWD control, original prior | 96.00% | 96.05% | 95.95% | 96.15% | 98.61% | 97.26% | 2.17 / 2.92 | 95.15% |
+| B | Multi-domain, original FloPWD prior | 92.33% | 88.17% | 96.85% | 79.49% | 93.07% | 94.92% | 5.48 / 7.40 | 100.00% |
+| C | Multi-domain, 1:1 FloPWD prior | 93.33% | 94.66% | 91.89% | 97.44% | 99.03% | 95.33% | 5.47 / 7.39 | 99.81% |
+| D | C protocol, task-decoupled towers | 92.00% | 91.68% | 92.34% | 91.03% | 96.70% | 94.47% | 5.48 / 7.40 | 100.00% |
+| E | Multi-domain, 2:1 FloPWD prior | 90.00% | 92.00% | 87.84% | 96.15% | 98.48% | 92.86% | 5.48 / 7.40 | 100.00% |
+| F | D architecture, original-prior severity stream | 93.33% | 91.75% | 95.05% | 88.46% | 95.91% | 95.48% | 5.48 / 7.40 | 100.00% |
 
-| Historical metric | Reported value |
-|---|---:|
-| Baseline validation accuracy | 74.3% |
-| Baseline specificity | 0% |
-| 1:1 balancing specificity | 44% |
-| Final reported specificity | 100% |
-| Final reported sensitivity | 100% |
-| Severity MAE | 5.3 percentage points |
-| Mean classification confidence | 93% |
+FloPWD metrics are binary plastic-presence metrics. UGV reports only recall among annotated-waste-positive records. Full machine-readable values and provenance are in [`experiments/results/`](experiments/results/); methods and interpretations are in [`docs/results.md`](docs/results.md).
 
-The 0% baseline specificity is notable because overall accuracy alone hid a majority-class failure mode: the baseline did not correctly identify negative examples. Specificity and sensitivity were not both derived solely from the positive-only UGV set. The completed FloPWD portfolio control uses a separate protocol; it is not an exact historical replication. See [results](docs/results.md) and [reproducibility notes](docs/reproducibility.md).
+## System overview
 
-## Multi-domain design
+An ImageNet-initialized ResNet50 extracts image features. The model predicts FloPWD binary plastic presence and continuous image-area coverage. B/C/E use a shared trainable multi-task tower; D/F retain the frozen shared feature extractor but split the trainable classification and severity towers. The architecture and label flow are summarized in [the diagram](assets/architecture_overview.png).
 
-The scientific question is whether visually diverse ground-level UGV imagery can improve cross-domain annotated-waste detection while preserving aerial FloPWD classification and coverage estimation. Rather than forcing heterogeneous datasets into a single label format, the reproduction uses partial supervision: FloPWD provides classification and coverage regression labels, while UGV contributes cross-domain classification evidence where supported.
+![Architecture and supervision overview](assets/architecture_overview.png)
 
-The complete local UGV v13 export contains 3,600 images, with all eight class IDs mapped by its local `data.yaml`; its original partitions contain 25 filename-derived source groups crossing splits. A deterministic grouped manifest is provided for future experiments. UGV positives mean **annotated waste present**, not clean-water absence and not necessarily plastic for every category. UGV severity is unavailable. See [`data/README.md`](data/README.md) and [`docs/methodology.md`](docs/methodology.md).
+## Datasets
 
-## Data and setup
+- **FloPWD:** aerial imagery with binary plastic-presence labels and mask-derived image coverage percentages.
+- **UGV-NBWASTE:** ground-level images with oriented non-biodegradable-waste annotations. The supported image-level target is annotated waste present; it is not equivalent to FloPWD plastic presence for every class. UGV has no comparable severity label.
 
-Datasets are not included. See [`data/README.md`](data/README.md) for source citations, licence information, expected layout, and schema limitations.
+The datasets are heterogeneous in viewpoint, setting, and label semantics. They are not merged into a claim of identical targets. Source data is not included; see [`data/README.md`](data/README.md) for attribution, licence, export-version notes, and local layout.
 
-Inspect local metadata without training:
+## Experiment design
 
-```bash
-python scripts/inspect_data.py --dataset flopwd --path data/FloPWD
-python scripts/inspect_data.py --dataset ugv --path data/UGV_NBWASTE
-```
+| Model | Training design | Main question |
+|---|---|---|
+| A | FloPWD only; original class prior | Control baseline for detection and severity |
+| B | FloPWD + UGV; 0.5/0.5 domain sampling; original FloPWD prior | Effect of adding a positive-only second domain |
+| C | Same as B; 1:1 negative:positive FloPWD sampling | Effect of classification class-prior balancing |
+| D | Same data protocol as C; task-specific trainable towers | Effect of task-head decoupling |
+| E | Same shared-tower protocol as C; 2:1 negative:positive FloPWD sampling | Sensitivity/specificity tradeoff at a second prior |
+| F | Same architecture and classification stream as D; independent original-prior FloPWD severity stream | Effect of restoring the severity-target sampling distribution |
 
-For FloPWD, `--write-split-manifest` saves a deterministic stratified 70/15/15 filename manifest. The seed-42 manifest is a portfolio split, not the dissertation split. To inspect UGV and create the source-grouped manifest and original-split leakage report, use `--write-grouped-split --write-leakage-report` with the complete local export.
+The controlled multi-domain runs use seed 42, frozen ImageNet ResNet50, Adam at 0.001, batch size 32, 15 epochs, and 660 optimizer updates. F adds a severity-only forward pass, so its image-forward/FLOP cost is higher than D despite matched optimizer updates and severity-example count. The tracked experiment matrix marks every experiment completed. **Experimental phase closed after Model F.**
 
-The runtime targets Python 3.10 with TensorFlow 2.15.x and NumPy below 2.0. Install `requirements.txt` for training/inference. Lightweight tests use `requirements-dev.txt`; standard CI does not install TensorFlow or download ImageNet weights. The local TensorFlow runtime was validated for the FloPWD pipeline. Combined multi-domain training is not yet run.
+## Main findings
 
-Train with local FloPWD data and the committed seed-42 manifest:
+- Control A achieved strong FloPWD classification and severity performance.
+- Adding UGV increased UGV annotated-waste positive recall but reduced FloPWD specificity in B.
+- C's 1:1 FloPWD class balancing recovered specificity and balanced accuracy.
+- E's 2:1 balance reduced sensitivity and did not improve specificity beyond C.
+- Multi-domain severity outputs collapsed. D showed that task decoupling alone was insufficient.
+- F restored the original severity-target sampling distribution without restoring severity performance.
+- The sigmoid-times-100 output and its optimization dynamics remain a plausible unresolved factor. The experiment does not prove causality.
+
+Model A is the strongest overall FloPWD classification-and-severity baseline. Model C is the strongest multi-domain specificity/balanced operating point. Model F is the final diagnostic ablation, not a recommended severity model. There is no single winner across distinct tasks.
+
+## Reproducibility
+
+The controlled experiments use seed 42, committed FloPWD and grouped UGV split manifests, Keras ResNet50 preprocessing, and matched optimizer-update budgets. The UGV manifest groups filename variants so detected source-like groups do not cross partitions; this is a leakage-control proxy rather than proof of image identity. Result JSONs retain training/evaluation Git SHAs where available, model/evaluation hashes, and split/specification hashes. Run checkpoints and full prediction tables are intentionally excluded from Git.
+
+### Environment and commands
+
+The validated benchmark runtime was Python 3.10.11, TensorFlow 2.15.1, Keras 2.15.0, and NumPy 1.26.4. Install dependencies in a virtual environment:
 
 ```powershell
-python scripts/train.py --data-dir "PATH_TO_FLOPWD" --config configs/default.yaml --split-manifest experiments/splits/flopwd_seed42.json --output-dir runs/flopwd_baseline
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt -r requirements-dev.txt
 ```
 
-Evaluate the untouched test split and predict one image:
+Inspect dataset metadata and regenerate deterministic manifests if needed:
 
 ```powershell
-python scripts/evaluate.py --data-dir "PATH_TO_FLOPWD" --model runs/flopwd_baseline/model.keras --split-manifest experiments/splits/flopwd_seed42.json --output-dir runs/flopwd_baseline/evaluation
-python scripts/predict.py --model runs/flopwd_baseline/model.keras --image path/to/image.jpg
+python scripts/inspect_data.py --dataset flopwd --path "<PATH_TO_FLOPWD>" --seed 42 --write-split-manifest
+python scripts/inspect_data.py --dataset ugv --path "<PATH_TO_UGV>" --seed 42 --write-grouped-split --write-leakage-report
 ```
 
-`--max-train-samples` is debug-only. A limited run is marked as a subset, not a full benchmark. Historical values above are not outputs of this code.
+The frozen portfolio manifests are already tracked. The following commands show the training interfaces; choose a new output directory for any deliberate reproduction. The experimental matrix is closed and its specifications should remain unchanged.
+
+```powershell
+# Control A
+python scripts/train.py --data-dir "<PATH_TO_FLOPWD>" --config configs/default.yaml --split-manifest experiments/splits/flopwd_seed42.json --output-dir runs/reproduction_a
+
+# Multi-domain B (original FloPWD prior)
+python scripts/train_multidomain.py --data-dir "<PATH_TO_FLOPWD>" --ugv-dir "<PATH_TO_UGV>" --spec experiments/specs/multidomain_matrix_seed42.yaml --experiment-type multidomain --output-dir runs/reproduction_b
+
+# Multi-domain C (1:1 FloPWD classification balance)
+python scripts/train_multidomain.py --data-dir "<PATH_TO_FLOPWD>" --ugv-dir "<PATH_TO_UGV>" --spec experiments/specs/multidomain_matrix_seed42.yaml --experiment-type multidomain_class_balanced --flopwd-negative-to-positive 1 --output-dir runs/reproduction_c
+
+# Evaluate an available FloPWD checkpoint on the frozen FloPWD test partition
+python scripts/evaluate.py --data-dir "<PATH_TO_FLOPWD>" --model runs/reproduction_a/model.keras --split-manifest experiments/splits/flopwd_seed42.json --output-dir runs/reproduction_a/evaluation
+
+# Predict one image with validated Control A severity capability
+python scripts/predict.py --model runs/flopwd_original_seed42/model.keras --model-id A --domain flopwd --image "<PATH_TO_IMAGE>"
+
+# Run the test suite
+python -m compileall src scripts tests
+python -m pytest -v
+```
+
+Full multi-domain evaluation also requires the UGV local export and its grouped manifest. UGV evaluation should report UGV annotated-waste positive recall and probability summaries only. Never derive specificity or balanced accuracy from this positive-only test population.
+
+## Limitations
+
+- UGV has no clean negatives, so it cannot support specificity, balanced accuracy, or binary accuracy.
+- UGV annotated-waste positives are broader than FloPWD plastic-presence labels and are not a matched semantic target.
+- Filename grouping is a practical leakage-control proxy, not proof of original-image identity; differently named duplicates may remain.
+- The full benchmarks were CPU-only and use one seed for the main controlled comparison.
+- Severity collapsed in all multi-domain configurations B through F; those severity outputs are not for use.
+- Results cover one frozen split and do not establish geographic, seasonal, or operational generalization.
+
+## Historical dissertation vs. rebuilt portfolio
+
+The dissertation's historical values are reported separately in [`docs/results.md`](docs/results.md). This repository is a deterministic rebuild and extension using new seed-42 splits, official ResNet preprocessing, stricter metric semantics, grouped UGV leakage controls, partial supervision, and controlled optimizer-update budgets. Historical 100% figures are not reproduced results from this portfolio.
 
 ## Repository map
 
-- `src/floating_plastic/` - model, dataset contracts, grouped splits, masked losses, sampling, pipeline, and metrics.
-- `scripts/` - training, evaluation, prediction, and data-inspection commands.
-- `configs/default.yaml`, `configs/experiments.yaml` - runtime defaults and unrun experiment profiles.
-- `legacy/` - appendix implementation retained for provenance.
-- `docs/` - methodology, results, model card, and reproducibility notes.
-- `tests/` - lightweight dataset-independent unit tests.
+- `src/floating_plastic/` — model, data contracts, splits, losses, samplers, and metrics.
+- `scripts/` — training, evaluation, prediction, and dataset inspection.
+- `experiments/specs/` — frozen experiment configurations and final status.
+- `experiments/results/` — compact tracked result summaries and provenance.
+- `assets/` — recruiter-facing comparison and architecture figures.
+- `docs/` — methodology, results, model card, and reproducibility.
+- `legacy/` — historical appendix code retained for provenance.
 
 ## License
 
-Original source code in this repository is licensed under MIT. Dataset assets remain subject to their original licences and are not redistributed here. See [LICENSE](LICENSE).
+Source code is licensed under MIT. Dataset and pretrained-weight terms remain with their providers; datasets and checkpoints are not redistributed here.

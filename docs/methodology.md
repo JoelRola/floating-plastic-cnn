@@ -1,58 +1,46 @@
 # Methodology
 
-## Historical dissertation implementation
+## Research question
 
-The original appendix implementation is retained under `legacy/`. It combines transfer learning with image-level binary plastic classification and image-area coverage regression. The historical preprocessing, split construction, class balancing, and evaluation limitations are described separately in [`reproducibility.md`](reproducibility.md); those historical results are not attributed to the current portfolio code.
+Can ground-level waste imagery improve cross-domain positive detection while preserving aerial FloPWD plastic classification and mask-derived coverage estimation? The experiment matrix tests data-domain composition, classification class prior, task-head sharing, and severity-example sampling as distinct factors.
 
-## Portfolio research question
+## Data and supervision
 
-Does adding visually diverse ground-level UGV imagery improve cross-domain plastic/waste detection while preserving aerial FloPWD classification and severity-estimation performance? The completed FloPWD-only run is the control. The frozen A/B/C/E multi-domain runs vary source composition and FloPWD class prior; D isolates trainable task representations; F isolates severity sampling.
+**FloPWD** provides aerial imagery with image-level plastic-present/absent labels and continuous mask-derived coverage in 0–100 percentage points. The eight positive-label/zero-coverage observations were retained. The deterministic seed-42 manifest partitions 2,002 filename records into 1,402 train, 300 validation, and 300 test examples.
 
-Rather than forcing heterogeneous datasets into a single label format, the reproduction uses partial supervision: FloPWD provides classification and coverage regression labels, while UGV contributes cross-domain classification evidence where supported.
+**UGV-NBWASTE v13** provides ground-level imagery and oriented non-biodegradable-waste annotations. An eligible non-empty annotation supports the target **annotated waste present**. The grouped seed-42 test set contains 536 positives. UGV contributes no comparable coverage label; no severity values are fabricated from boxes. Its positive-only labels do not support specificity or balanced accuracy.
 
-## Domains and supervision
+The domains differ in view, acquisition, and target semantics. UGV annotated-waste positive recall is reported separately and is not treated as matched-label FloPWD accuracy.
 
-FloPWD supplies aerial image samples with an image-level plastic-presence target and a continuous image-area coverage target in 0–100 percentage points. Both targets are available for the verified FloPWD record; the eight positive-label/zero-coverage cases remain unchanged.
+## Model and training protocol
 
-The complete local UGV Roboflow v13 export supplies ground-level images and oriented waste-object annotations. The local `data.yaml` mapping is the parser source of truth for that export: ID 0 `bottle`, 1 `cocksheet`, 2 `hardplastic`, 3 `mask`, 4 `medicine`, 5 `packet`, 6 `polythene`, 7 `sandal`. The paper describes the same broad eight waste categories, though its prose/order and naming are not a substitute for the export's ID mapping. A separate local metadata-only folder exposes IDs 0–6 with a different mapping and no image splits; it is not used.
+The feature extractor is ImageNet-initialized ResNet50 (`include_top=False`) followed by global average pooling. It is frozen. Classification predicts a sigmoid probability; severity is parameterized as sigmoid × 100 percentage points. Inputs use official Keras ResNet preprocessing embedded in the model.
 
-For the complete export, a non-empty annotation supports an image-level **annotated waste present** positive. This target is not called plastic presence for every class. Empty or class-filtered nonmatching records are label-unavailable, never clean-water negatives. The local v13 export has 3,600/3,600 non-empty annotations, so all its images are eligible positive examples under the broad waste-presence target. UGV severity is unavailable: OBB occupancy is not interchangeable with mask-derived image-area plastic coverage.
+Models A/B/C/E use the shared trainable multi-task tower. D/F share only the frozen feature vector before separate trainable classification and severity towers. All full controlled runs use seed 42, Adam at 0.001, batch size 32, 15 epochs, 44 steps per epoch, and 660 optimizer updates. Classification and severity loss weights are 1.0 and 0.5. The classification threshold is fixed at 0.5.
 
-## Leakage-aware UGV partitions
+| Model | Training design | Changed factor |
+|---|---|---|
+| A | FloPWD only; original FloPWD prior | Control |
+| B | FloPWD + UGV; 0.5/0.5 domains; original FloPWD prior | Add domain |
+| C | Same as B; 1:1 FloPWD negative:positive classification samples | Classification prior |
+| D | Same sampling as C; task-decoupled trainable towers | Architecture |
+| E | Same shared-tower protocol as C; 2:1 FloPWD negative:positive samples | Classification prior |
+| F | Same architecture/classification stream as D; separate original-prior FloPWD severity stream | Severity sampling distribution |
 
-Roboflow-style `.rf.<hex hash>` suffixes are removed from filename stems to construct a deterministic, case-insensitive canonical source-ID proxy. This naming rule found 3,549 groups among 3,600 exported images; 25 groups crossed the export's existing train/valid/test boundaries. This is evidence of split overlap under the filename-derived proxy, not proof that all distinct IDs are independent source images.
+F takes K independent original-prior FloPWD severity records per update, where K is the number of FloPWD records in the mixed classification batch. This matches D's severity-example count and optimizer updates but adds a separate severity-only forward pass, so total image-forward/FLOP cost is higher.
 
-`experiments/splits/ugv_grouped_seed42.json` provides a deterministic 70/15/15 split by group. It assigns all variants from each canonical group to one partition. Counts are 2,484/533/532 groups and 2,522/542/536 images for train/validation/test. This portfolio split does not reproduce the publication's split.
+## Experimental findings
 
-## Heterogeneous model training design
+The class-prior ablation moves the fixed-threshold operating point: B has high sensitivity and lower specificity; C recovers specificity and balanced accuracy; E reduces sensitivity and does not exceed C's specificity. UGV annotated-waste positive recall remains high across multi-domain models.
 
-Models B/C/E use the existing ResNet50 shared tower and retain binary classification and 0–100 severity outputs. Model D shares only the frozen ResNet50/GAP representation; separate trainable classification and severity towers follow it. Dataset records carry separate target values, availability flags, and source-domain IDs. Keras loss inputs encode `[target, available]`; masked classification loss ignores samples without a supported image-level target, and masked regression loss ignores samples without genuine severity labels. UGV examples therefore contribute classification supervision only, without fabricated severity targets.
+Severity is functional in Control A. B/C/E show near-zero or near-constant collapse. D isolates the trainable task towers but remains collapsed, indicating shared trainable head layers alone were not sufficient to explain the failure. Classification balancing changes the severity stream's exact-zero fraction from 26.32% in original FloPWD training records to about 50.24% in D's balanced sampling cycle. F restores the original severity sampling distribution but also remains collapsed. The sigmoid×100 output and optimization dynamics are plausible unresolved mechanisms; they are not proven causes.
 
-Domain sampling and class balancing are separate controls. `domain_sampling.strategy: balanced` gives each active source equal example-sampling probability regardless of export size. Optional binary class balancing applies only to labeled FloPWD training records, because positive-only UGV provides no clean-water negatives. Validation and test remain separated by source domain and are reported independently.
+The design rationale and controlled conditions are described in the tracked [experiment matrix](../experiments/specs/multidomain_matrix_seed42.yaml). **Experimental phase closed after Model F.** All six benchmarks are complete.
 
-The frozen seed-42 experiment matrix in `experiments/specs/multidomain_matrix_seed42.yaml` defines:
+## Evaluation and leakage controls
 
-- **A:** FloPWD-only control with the original FloPWD class distribution.
-- **B:** FloPWD plus grouped UGV, balanced domain sampling, original FloPWD class distribution.
-- **C:** same multi-domain protocol with 1:1 negative:positive sampling within FloPWD training records.
-- **E:** same shared-tower protocol as C with 2:1 negative:positive sampling within FloPWD training records.
-- **D:** same data protocol as C, but independent trainable classification and severity towers after the frozen shared feature extractor.
-- **F:** same task-decoupled architecture and balanced multi-domain classification stream as D, but draws severity examples independently from the original, unbalanced FloPWD training distribution. Each update draws exactly as many severity examples as FloPWD examples in its classification batch.
+FloPWD reports accuracy, balanced accuracy, sensitivity, specificity, precision, F1, confusion counts, and severity metrics. UGV reports only UGV annotated-waste positive recall and probability summaries. The difference between those recall values is a domain diagnostic, not a matched-domain accuracy metric.
 
-B/C/E classification results show that changing the effective class prior changes the fixed-threshold sensitivity/specificity tradeoff. Severity remained near-zero collapsed for B, C, and E, with all-image MAE about 5.47–5.48 percentage points. Full Model D also remained near-zero collapsed after task-head decoupling, so shared trainable task layers alone were not sufficient to explain the failure. The audit found that 1:1 classification balancing shifted the severity draw's exact-zero fraction from 26.32% to about 50.24%, where zero is the MAE-optimal constant; sigmoid×100 outputs also rapidly saturated toward zero. Model F therefore separates classification and severity sampling while holding architecture, loss, optimizer, and optimizer-update budget fixed. F's engineering smoke is not benchmark evidence, and no F benchmark claim is made here.
+UGV grouping removes a terminal Roboflow-style `.rf.<hex>` suffix from filename stems and assigns each canonical group to one split. It detected 25 cross-partition groups in the original export. Grouping is a leakage-control proxy, not proof of original-image identity or a detector for differently named duplicates.
 
-Model F adds a severity-only forward pass over an independent original-prior FloPWD stream for every mixed classification batch. This matches D's optimizer updates, classification sampling policy, and severity-example count when its deterministic classification stream is reproduced. Its total image-forward/FLOP cost is higher than D and is not described as compute-matched.
-
-Comparisons retain the same split manifests, seed, preprocessing, losses and weights, optimizer-step budget, and evaluation implementation unless the matrix explicitly names the architecture or FloPWD class-ratio ablation.
-
-## Evaluation design
-
-FloPWD validation/test metrics include accuracy, balanced accuracy, sensitivity, specificity, precision, F1, confusion counts, and image-area severity MAE/RMSE in percentage points. Severity is also summarized for positive images separately.
-
-UGV evaluation uses only supported metrics: annotated-waste positive recall at a predeclared threshold, sample count, and predicted-probability distribution. Without labeled clean-water negatives, UGV specificity, balanced accuracy, and binary accuracy are undefined and omitted. A cross-domain positive-recall difference may be reported as a **domain gap** between different domains and positive-target semantics; it is not called accuracy degradation.
-
-Do not combine FloPWD negatives and UGV positives into one benchmark. Geography, viewpoint, camera, backgrounds, image scale, acquisition, and export history differ, so a mixed source/class split would confound class and domain.
-
-## Potential later UGV auxiliary task
-
-The annotations could support object detection or object-count prediction after validating boxes and defining a separate task. Detection would add stronger computer-vision evidence than an occupancy proxy while preserving the distinction from FloPWD mask-derived image coverage. No auxiliary target is implemented in this phase.
+Validation metrics were descriptive and did not change thresholds, sampling, or frozen configurations. Each final benchmark used the final-epoch checkpoint and the frozen 0.5 threshold. See [results](results.md), [reproducibility](reproducibility.md), and the compact [result package](../experiments/results/).
