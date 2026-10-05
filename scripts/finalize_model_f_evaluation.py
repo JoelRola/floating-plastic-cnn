@@ -141,6 +141,12 @@ def main(argv=None):
         "ugv_grouped_split_manifest": sha(um_path), "frozen_matrix_specification": sha(args.spec)}
     write_json(out / "sha256.json", hashes)
     metadata = json.loads((args.run_dir / "metadata.json").read_text(encoding="utf-8"))
+    reload_report = json.loads((args.run_dir / "reload_verification.json").read_text(encoding="utf-8"))
+    metadata["model_reload_verified"] = bool(reload_report["fresh_process"] and
+                                               reload_report["optimizer_iterations"] == 660)
+    metadata["reload_verification_file"] = "reload_verification.json"
+    metadata["backward_compatibility"] = reload_report["legacy_shared_checkpoint_loads"]
+    write_json(args.run_dir / "metadata.json", metadata)
     write_json(out / "provenance.json", {
         "training_git_sha": metadata["training_git_sha"], "evaluation_git_sha": args.evaluation_git_sha,
         "artifact_finalization_git_sha": subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
