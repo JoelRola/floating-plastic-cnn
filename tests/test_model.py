@@ -103,7 +103,7 @@ def test_task_decoupled_towers_isolate_ugv_classification_gradients(tmp_path):
     assert len(loaded.loss) == 2
 
 
-def test_two_stream_step_isolates_task_gradients_and_freezes_backbone():
+def test_two_stream_step_isolates_task_gradients_and_freezes_backbone(tmp_path):
     if importlib.util.find_spec("tensorflow") is None:
         pytest.skip("TensorFlow is an optional model dependency and is not installed in lightweight CI")
     import numpy as np
@@ -131,8 +131,10 @@ def test_two_stream_step_isolates_task_gradients_and_freezes_backbone():
 
     severity_before = [weight.copy() for layer in severity_layers for weight in layer.get_weights()]
     class_before = [weight.copy() for layer in class_layers for weight in layer.get_weights()]
+    class_optimizer = tf.keras.optimizers.Adam(0.001)
+    class_optimizer.build(model.trainable_variables)
     class_result = task_decoupled_two_stream_train_step(
-        model, tf.keras.optimizers.Adam(0.001), images, labels, images, severity_labels,
+        model, class_optimizer, images, labels, images, severity_labels,
         ["flopwd", "flopwd"], class_loss, severity_loss, 1.0, 0.0)
     assert class_result["classification_tower_gradient_norm"] > 0
     assert class_result["severity_cross_tower_gradient_norm"] == 0
@@ -143,8 +145,10 @@ def test_two_stream_step_isolates_task_gradients_and_freezes_backbone():
 
     class_before = [weight.copy() for layer in class_layers for weight in layer.get_weights()]
     severity_before = [weight.copy() for layer in severity_layers for weight in layer.get_weights()]
+    severity_optimizer = tf.keras.optimizers.Adam(0.001)
+    severity_optimizer.build(model.trainable_variables)
     severity_result = task_decoupled_two_stream_train_step(
-        model, tf.keras.optimizers.Adam(0.001), images, labels, images, severity_labels,
+        model, severity_optimizer, images, labels, images, severity_labels,
         ["flopwd", "flopwd"], class_loss, severity_loss, 0.0, 0.5)
     assert severity_result["severity_tower_gradient_norm"] > 0
     assert severity_result["classification_cross_tower_gradient_norm"] == 0
@@ -153,6 +157,17 @@ def test_two_stream_step_isolates_task_gradients_and_freezes_backbone():
     assert all(np.array_equal(a, b) for a, b in zip(class_before, class_after))
     assert any(not np.array_equal(a, b) for a, b in zip(severity_before, severity_after))
     assert all(np.array_equal(a, b) for a, b in zip(backbone_before, backbone.get_weights()))
+
+    model.compile(optimizer=tf.keras.optimizers.Adam(0.001),
+                  loss={"classification": class_loss, "severity": severity_loss},
+                  loss_weights={"classification": 1.0, "severity": 0.5})
+    model.optimizer.build(model.trainable_variables)
+    save_path = tmp_path / "two_stream_roundtrip.keras"
+    model.save(save_path)
+    restored = tf.keras.models.load_model(save_path, custom_objects=custom_objects())
+    assert {name: loss.task for name, loss in restored.loss.items()} == {
+        "classification": "binary_crossentropy", "severity": "mae"}
+    assert all(np.array_equal(a, b) for a, b in zip(model.get_weights(), restored.get_weights()))
 
     with pytest.raises(ValueError, match="FloPWD"):
         task_decoupled_two_stream_train_step(

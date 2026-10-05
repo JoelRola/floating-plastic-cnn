@@ -185,6 +185,9 @@ def main(argv=None):
         loss={"classification": make_tensorflow_masked_loss("binary_crossentropy"),
               "severity": make_tensorflow_masked_loss("mae")},
         loss_weights={"classification": 1.0, "severity": 0.5})
+    # Build Adam slots in model.trainable_variables order before the two-stream
+    # step submits task-grouped gradient pairs, so .keras reload restores slots.
+    model.optimizer.build(model.trainable_variables)
     parameter_counts = {
         "total": int(model.count_params()),
         "trainable": int(sum(np.prod(variable.shape) for variable in model.trainable_variables)),
