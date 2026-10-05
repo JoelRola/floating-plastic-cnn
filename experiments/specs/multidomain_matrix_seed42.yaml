@@ -150,3 +150,50 @@ matrix:
       flopwd: experiments/splits/flopwd_seed42.json
       ugv: experiments/splits/ugv_grouped_seed42.json
     only_change_from_model_c: flopwd_class_ratio_1_to_1_becomes_2_to_1_negative_to_positive
+  F:
+    name: task_decoupled_original_severity_prior
+    status: frozen_not_run
+    experiment_type: multidomain_task_decoupled_severity_prior
+    architecture_variant: task_decoupled
+    classification_stream:
+      sources: [flopwd, ugv]
+      domain_sampling:
+        flopwd: 0.5
+        ugv: 0.5
+      flopwd_class_balance:
+        negative_to_positive: "1:1"
+      batch_size: 32
+      threshold: 0.5
+    severity_stream:
+      source: flopwd
+      sampling: original_unbalanced_distribution
+      independent_of_classification_stream: true
+      examples_per_update: equal_to_flopwd_count_in_classification_batch
+      deterministic_traversal: shuffled_cyclic_without_replacement_per_cycle
+      seed: 42
+    seed: 42
+    epochs: 15
+    steps_per_epoch: 44
+    total_optimizer_updates: 660
+    optimizer: adam
+    learning_rate: 0.001
+    classification_loss: binary_crossentropy
+    severity_loss: mean_absolute_error_percentage_points
+    classification_loss_weight: 1.0
+    severity_loss_weight: 0.5
+    backbone: resnet50_imagenet_frozen
+    severity_output: unchanged_sigmoid_scaled_0_to_100
+    split_manifests:
+      flopwd: experiments/splits/flopwd_seed42.json
+      ugv: experiments/splits/ugv_grouped_seed42.json
+    architecture_variant_from_d: unchanged
+    only_change_from_model_d: severity_examples_use_independent_original_flopwd_prior_stream
+    matched_budgets:
+      optimizer_updates: true
+      classification_sampling: identical_to_model_d
+      severity_supervision_count: one_per_flopwd_classification_example
+      total_image_forward_compute: false
+    compute_note: >-
+      Each update adds a severity-only forward pass for the independently sampled
+      FloPWD examples; image-processing/FLOP cost exceeds Model D even when
+      optimizer updates and severity example counts are matched.
