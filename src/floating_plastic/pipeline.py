@@ -108,6 +108,42 @@ def make_heterogeneous_tf_dataset(records, batch_size, image_size=(224, 224),
     return dataset.batch(int(batch_size), drop_remainder=False).prefetch(tf.data.AUTOTUNE)
 
 
+def make_original_prior_severity_stream(records, image_size=(224, 224), seed=42):
+    """Create an infinite, seeded shuffled-cycle stream over original FloPWD rows.
+
+    This stream deliberately receives the unbalanced FloPWD training records,
+    before any classification balancing. It emits one record at a time so a
+    caller can request exactly K severity examples for a mixed classification
+    batch that contains K FloPWD examples.
+    """
+    tf = _tensorflow()
+    ordered = sorted(records, key=lambda record: record.filename)
+    if not ordered or any(record.source_domain != "flopwd" for record in ordered):
+        raise ValueError("original-prior severity stream requires FloPWD-only records")
+    if any(not record.severity_target_available for record in ordered):
+        raise ValueError("original-prior severity stream requires available severity labels")
+    paths = [str(record.image_path) for record in ordered]
+    targets = {
+        "classification": pack_masked_targets(
+            [record.classification_target for record in ordered],
+            [record.classification_target_available for record in ordered]),
+        "severity": pack_masked_targets(
+            [record.severity_target for record in ordered],
+            [record.severity_target_available for record in ordered]),
+    }
+    domains = [record.source_domain for record in ordered]
+    dataset = tf.data.Dataset.from_tensor_slices((paths, targets, domains))
+    options = tf.data.Options()
+    options.experimental_deterministic = True
+    dataset = dataset.with_options(options)
+    dataset = dataset.shuffle(len(ordered), seed=int(seed), reshuffle_each_iteration=True).repeat()
+
+    def load(path, labels, domain):
+        return decode_resize_rgb(path, image_size), labels, domain
+
+    return dataset.map(load, num_parallel_calls=tf.data.AUTOTUNE, deterministic=True).batch(1).prefetch(1)
+
+
 def make_multidomain_tf_dataset(records_by_domain, batch_size, image_size=(224, 224),
                                 training=True, seed=42, strategy="balanced",
                                 flopwd_negative_to_positive=None, include_domain_id=False):

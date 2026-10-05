@@ -6,7 +6,7 @@ The original appendix implementation is retained under `legacy/`. It combines tr
 
 ## Portfolio research question
 
-Does adding visually diverse ground-level UGV imagery improve cross-domain plastic/waste detection while preserving aerial FloPWD classification and severity-estimation performance? The completed FloPWD-only run is the control. The frozen A/B/C/E multi-domain runs vary source composition and FloPWD class prior; D isolates the trainable task representations.
+Does adding visually diverse ground-level UGV imagery improve cross-domain plastic/waste detection while preserving aerial FloPWD classification and severity-estimation performance? The completed FloPWD-only run is the control. The frozen A/B/C/E multi-domain runs vary source composition and FloPWD class prior; D isolates trainable task representations; F isolates severity sampling.
 
 Rather than forcing heterogeneous datasets into a single label format, the reproduction uses partial supervision: FloPWD provides classification and coverage regression labels, while UGV contributes cross-domain classification evidence where supported.
 
@@ -37,8 +37,11 @@ The frozen seed-42 experiment matrix in `experiments/specs/multidomain_matrix_se
 - **C:** same multi-domain protocol with 1:1 negative:positive sampling within FloPWD training records.
 - **E:** same shared-tower protocol as C with 2:1 negative:positive sampling within FloPWD training records.
 - **D:** same data protocol as C, but independent trainable classification and severity towers after the frozen shared feature extractor.
+- **F:** same task-decoupled architecture and balanced multi-domain classification stream as D, but draws severity examples independently from the original, unbalanced FloPWD training distribution. Each update draws exactly as many severity examples as FloPWD examples in its classification batch.
 
-B/C/E classification results show that changing the effective class prior changes the fixed-threshold sensitivity/specificity tradeoff. Severity remained near-zero collapsed for B, C, and E, with all-image MAE about 5.47–5.48 percentage points. D tests whether trainable shared-representation interference caused the regression failure; its architecture and real-data smoke checks do not constitute benchmark results. D's frozen experiment values must remain unchanged after E results are known.
+B/C/E classification results show that changing the effective class prior changes the fixed-threshold sensitivity/specificity tradeoff. Severity remained near-zero collapsed for B, C, and E, with all-image MAE about 5.47–5.48 percentage points. Full Model D also remained near-zero collapsed after task-head decoupling, so shared trainable task layers alone were not sufficient to explain the failure. The audit found that 1:1 classification balancing shifted the severity draw's exact-zero fraction from 26.32% to about 50.24%, where zero is the MAE-optimal constant; sigmoid×100 outputs also rapidly saturated toward zero. Model F therefore separates classification and severity sampling while holding architecture, loss, optimizer, and optimizer-update budget fixed. F's engineering smoke is not benchmark evidence, and no F benchmark claim is made here.
+
+Model F adds a severity-only forward pass over an independent original-prior FloPWD stream for every mixed classification batch. This matches D's optimizer updates, classification sampling policy, and severity-example count when its deterministic classification stream is reproduced. Its total image-forward/FLOP cost is higher than D and is not described as compute-matched.
 
 Comparisons retain the same split manifests, seed, preprocessing, losses and weights, optimizer-step budget, and evaluation implementation unless the matrix explicitly names the architecture or FloPWD class-ratio ablation.
 
