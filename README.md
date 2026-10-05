@@ -134,4 +134,6 @@ The dissertation's historical values are reported separately in [`docs/results.m
 
 ## License
 
-Source code is licensed under MIT. Dataset and pretrained-weight terms remain with their providers; datasets and checkpoints are not redistributed here.
+Source code is licensed under MIT. Dataset and pretrained-weight terms remain with their providers; datasets and checkpoints are not redistributed here. Datasets are not covered by this licence. They remain subject to their
+respective licences and are not redistributed by this repository.
+
