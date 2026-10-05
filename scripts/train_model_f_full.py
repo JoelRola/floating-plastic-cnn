@@ -87,13 +87,13 @@ def validate_epoch(model, records, batch_size, threshold, domain):
             true_severity.extend(sev[:, 0].tolist())
             predicted_severity.extend(np.asarray(output["severity"]).reshape(-1).tolist())
     classes, probs = np.asarray(classes), np.asarray(probs)
-    cls_metrics = classification_metrics(classes, threshold_predictions(probs, threshold))
-    result = {"sample_count": int(len(classes)), "classification": cls_metrics,
+    result = {"sample_count": int(len(classes)),
               "mean_probability": float(probs.mean()), "median_probability": float(np.median(probs)),
               "probability_sd": float(probs.std()), "minimum_probability": float(probs.min()),
               "maximum_probability": float(probs.max()),
               "positive_recall": float(np.sum((probs >= threshold) & (classes == 1)) / max(1, np.sum(classes == 1)))}
     if domain == "flopwd":
+        result["classification"] = classification_metrics(classes, threshold_predictions(probs, threshold))
         true_severity, predicted_severity = np.asarray(true_severity), np.asarray(predicted_severity)
         result["severity"] = severity_regression_metrics(true_severity, predicted_severity)
         result["severity_prediction"] = {"mean": float(predicted_severity.mean()),
