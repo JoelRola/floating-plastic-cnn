@@ -66,6 +66,28 @@ def test_original_severity_sampler_is_seed_deterministic():
     assert [r.filename for r in first] == [r.filename for r in second]
 
 
+def test_original_severity_sampler_state_restores_exact_next_draws():
+    records = _records()
+    uninterrupted = OriginalPriorCyclicSampler(records, seed=42)
+    uninterrupted.next_records(7)
+    state = uninterrupted.state_dict()
+    expected = [r.filename for r in uninterrupted.next_records(19)]
+
+    resumed = OriginalPriorCyclicSampler(records, seed=42)
+    resumed.load_state_dict(state)
+    assert [r.filename for r in resumed.next_records(19)] == expected
+    assert resumed.draw_count == uninterrupted.draw_count
+    assert resumed.completed_cycles == uninterrupted.completed_cycles
+
+
+def test_original_severity_sampler_rejects_mismatched_resume_population():
+    sampler = OriginalPriorCyclicSampler(_records(), seed=42)
+    state = sampler.state_dict()
+    state["filenames"] = ["different.jpg"]
+    with pytest.raises(ValueError, match="seed/population"):
+        OriginalPriorCyclicSampler(_records(), seed=42).load_state_dict(state)
+
+
 def test_original_severity_sampler_rejects_ugv_and_unavailable_targets():
     with pytest.raises(ValueError, match="only FloPWD"):
         OriginalPriorCyclicSampler([SimpleNamespace(filename="u", source_domain="ugv",

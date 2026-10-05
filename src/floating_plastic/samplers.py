@@ -49,6 +49,35 @@ class OriginalPriorCyclicSampler:
     def next_records(self, count):
         return [self.records[int(index)] for index in self.next_indices(count)]
 
+    def state_dict(self):
+        """Return JSON-safe state for exact continuation across checkpoints."""
+        return {
+            "seed": self.seed,
+            "filenames": [record.filename for record in self.records],
+            "rng_state": self._rng.bit_generator.state,
+            "permutation": self._permutation.tolist(),
+            "position": self._position,
+            "draw_count": self.draw_count,
+            "completed_cycles": self.completed_cycles,
+        }
+
+    def load_state_dict(self, state):
+        """Restore a state produced for this exact ordered training population."""
+        expected = [record.filename for record in self.records]
+        if state.get("seed") != self.seed or state.get("filenames") != expected:
+            raise ValueError("severity sampler checkpoint does not match seed/population")
+        permutation = np.asarray(state.get("permutation", []), dtype=int)
+        if len(permutation) and sorted(permutation.tolist()) != list(range(len(self.records))):
+            raise ValueError("severity sampler checkpoint has an invalid permutation")
+        position = int(state.get("position", 0))
+        if not 0 <= position <= len(permutation):
+            raise ValueError("severity sampler checkpoint has an invalid position")
+        self._rng.bit_generator.state = state["rng_state"]
+        self._permutation = permutation
+        self._position = position
+        self.draw_count = int(state.get("draw_count", 0))
+        self.completed_cycles = int(state.get("completed_cycles", 0))
+
 
 def severity_distribution(records):
     values = np.asarray([float(record.severity_target) for record in records], dtype=float)
