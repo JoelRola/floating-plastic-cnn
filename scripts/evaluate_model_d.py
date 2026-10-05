@@ -87,6 +87,7 @@ def _severity_summary(truth, prediction, class_truth):
 
 def _write_predictions(path, records, truth, probabilities, predictions, severity_truth=None,
                        severity_prediction=None):
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
     fields = ["filename", "true_class", "predicted_probability", "predicted_class"]
     if severity_truth is not None:
         fields += ["true_severity", "predicted_severity", "severity_absolute_error"]
