@@ -301,6 +301,7 @@ def main(argv=None):
            "minimum_probability": ugv_summary["predicted_probability_distribution"]["min"],
            "maximum_probability": ugv_summary["predicted_probability_distribution"]["max"],
            "below_threshold_count": int(np.sum(ugv_hat == 0)), "severity_labels": 0}
+    ugv_canonical_by_filename = {row.filename: row.canonical_source_id for row in ugv_parts["test"]}
     out.mkdir(parents=True, exist_ok=True)
     write_predictions(out / "flopwd" / "predictions.csv", flo_test, flo_y, flo_p, flo_hat, sev_y, sev_p)
     write_predictions(out / "ugv" / "predictions.csv", ugv_test, ugv_y, ugv_p, ugv_hat)
@@ -343,10 +344,11 @@ def main(argv=None):
             "predicted": float(sev_p[i]), "absolute_error": float(errors[i])} for i in np.argsort(errors)[::-1][:10]],
         "severity_error_median": float(np.median(errors)), "severity_error_p90": float(np.quantile(errors,.9)),
         "severity_error_max": float(errors.max()),
-        "ugv_below_threshold": [{"filename": ugv_test[i].filename, "canonical_source_id": ugv_test[i].canonical_source_id,
+        "ugv_below_threshold": [{"filename": ugv_test[i].filename,
+                                 "canonical_source_id": ugv_canonical_by_filename[ugv_test[i].filename],
                                  "probability": float(ugv_p[i])} for i in np.where(ugv_hat == 0)[0]],
         "lowest_confidence_ugv_positives": [{"filename": ugv_test[i].filename,
-            "canonical_source_id": ugv_test[i].canonical_source_id, "probability": float(ugv_p[i])}
+            "canonical_source_id": ugv_canonical_by_filename[ugv_test[i].filename], "probability": float(ugv_p[i])}
             for i in np.argsort(ugv_p)[:10]],
     }
     write_json(out / "error_analysis.json", error_analysis)
