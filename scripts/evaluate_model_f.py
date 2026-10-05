@@ -227,12 +227,22 @@ def main(argv=None):
     model_path = args.run_dir / "model.keras"
     model = tf.keras.models.load_model(model_path, custom_objects=custom_objects(), compile=True)
     backbone = model.get_layer("resnet50")
-    if model.name != "floating_plastic_resnet50_multitask_task_decoupled" or backbone.trainable:
-        raise ValueError("final model architecture/backbone state failed reload")
+    if model.name != "floating_plastic_resnet50_multitask_task_decoupled":
+        raise ValueError("final model architecture failed reload")
+    if not isinstance(model.loss, dict) or {
+            name: getattr(loss, "task", None) for name, loss in model.loss.items()} != {
+                "classification": "binary_crossentropy", "severity": "mae"}:
+        raise ValueError("masked losses failed fresh-process reload")
     if int(model.optimizer.iterations.numpy()) != 660:
         raise ValueError("reloaded optimizer iteration is not 660")
     if len(backbone.trainable_variables) or {id(v) for v in backbone.weights} & {id(v) for v in model.trainable_variables}:
         raise ValueError("backbone weights are trainable after reload")
+    # Keras 2.15 can reload the nested ResNet Model wrapper with trainable=True
+    # while all child ResNet variables remain excluded from optimization.
+    # Reassert the frozen wrapper before inference and verify the contract.
+    backbone.trainable = False
+    if backbone.trainable or backbone.trainable_variables:
+        raise ValueError("reloaded ResNet50 could not be explicitly kept frozen")
     train_probe = [heterogeneous_flopwd_record(flo_parts["train"][0]),
                    heterogeneous_ugv_record(ugv_parts["train"][0])]
     reload_predictions = []
