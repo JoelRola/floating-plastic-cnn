@@ -172,7 +172,11 @@ def main(argv=None):
     monitor_dataset = make_heterogeneous_tf_dataset(monitor_records, len(monitor_records), image_size)
     monitor_images, monitor_targets = next(iter(monitor_dataset))
 
-    model = create_model(input_shape=(224, 224, 3), weights="imagenet", backbone_trainable=False,
+    imagenet_weights = (Path(__file__).resolve().parents[1] / ".keras-cache" / ".keras" /
+                        "models" / "resnet50_weights_tf_dim_ordering_tf_kernels_notop.h5")
+    if not imagenet_weights.is_file() or _sha(imagenet_weights) != d_reference["imagenet_weights_sha256"]:
+        raise FileNotFoundError("the verified Model D ImageNet ResNet50 weights cache is unavailable")
+    model = create_model(input_shape=(224, 224, 3), weights=str(imagenet_weights), backbone_trainable=False,
                          dense_units=config["model"]["dense_units"],
                          dropout_rates=config["model"]["dropout_rates"],
                          architecture_variant="task_decoupled")
@@ -282,6 +286,7 @@ def main(argv=None):
         "loss_weights": {"classification": 1.0, "severity": 0.5},
         "severity_output": "sigmoid * 100; unchanged from D",
         "frozen_matrix_sha256": _sha(args.spec),
+        "imagenet_weights_sha256": _sha(imagenet_weights),
         "flopwd_split_sha256": _sha(flo_manifest_path), "ugv_split_sha256": _sha(ugv_manifest_path),
         "git_commit_sha": subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
                                           text=True, check=True).stdout.strip(),
