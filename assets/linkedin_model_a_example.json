@@ -1,0 +1,13 @@
+{
+  "image_filename": "img1490.jpg",
+  "mask_filename": "img1490_mask.png",
+  "split": "test",
+  "model_id": "A",
+  "checkpoint_sha256": "ac6eaf3aa1f5b5ac55a074fb4e8ab377b4612e0ca848379d24f77c16c8cd65fd",
+  "classification_probability": 0.9952713251113892,
+  "predicted_coverage_percent": 10.375673294067383,
+  "true_coverage_percent": 9.94,
+  "absolute_error_pp": 0.4356732940673833,
+  "calculated_mask_coverage_percent": 9.944986979166668,
+  "generation_git_sha": "9f36ca7a5b990bcc3855ee58f204f01f0b5bf6ec"
+}
